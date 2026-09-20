@@ -11,8 +11,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
@@ -34,30 +34,38 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.example.loginapp.data.AuthResult
+import com.example.loginapp.data.Campuses
 import com.example.loginapp.data.UserRepository
+import com.example.loginapp.ui.components.LabeledDropdown
 import com.example.loginapp.util.Validation
 
 @Composable
 fun LoginScreen(
-    onLoginSuccess: (username: String) -> Unit,
+    onLoginSuccess: (studentId: String, schoolId: String) -> Unit,
     onNavigateToSignUp: () -> Unit
 ) {
-    var username by remember { mutableStateOf("") }
+    var campusName by remember { mutableStateOf("") }
+    var studentId by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
 
-    var usernameError by remember { mutableStateOf<String?>(null) }
+    var campusError by remember { mutableStateOf<String?>(null) }
+    var studentIdError by remember { mutableStateOf<String?>(null) }
     var passwordError by remember { mutableStateOf<String?>(null) }
     var formError by remember { mutableStateOf<String?>(null) }
 
     fun submit() {
         formError = null
-        usernameError = Validation.usernameError(username)
+        campusError = if (campusName.isBlank()) "Please select your campus." else null
+        studentIdError = Validation.requiredIdError(studentId, "Student ID")
         passwordError = Validation.passwordError(password)
-        if (usernameError != null || passwordError != null) return
+        if (campusError != null || studentIdError != null || passwordError != null) return
 
-        when (val result = UserRepository.login(username, password)) {
-            is AuthResult.Success -> onLoginSuccess(username.trim())
+        // Map the chosen display name back to the backend school_id.
+        val schoolId = Campuses.all.first { it.displayName == campusName }.id
+
+        when (val result = UserRepository.login(studentId, schoolId, password)) {
+            is AuthResult.Success -> onLoginSuccess(studentId.trim(), schoolId)
             is AuthResult.Error -> formError = result.message
         }
     }
@@ -76,25 +84,42 @@ fun LoginScreen(
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            text = "Log in to your account",
+            text = "Log in to your MedKit account",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurface
         )
 
         Spacer(Modifier.height(32.dp))
 
-        OutlinedTextField(
-            value = username,
-            onValueChange = {
-                username = it
-                usernameError = null
+        LabeledDropdown(
+            label = "Select Campus",
+            options = Campuses.all.map { it.displayName },
+            selected = campusName,
+            onSelected = {
+                campusName = it
+                campusError = null
                 formError = null
             },
-            label = { Text("Username") },
-            leadingIcon = { Icon(Icons.Filled.Person, contentDescription = null) },
+            placeholder = "Select your campus",
+            isError = campusError != null,
+            supportingText = campusError,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(Modifier.height(12.dp))
+
+        OutlinedTextField(
+            value = studentId,
+            onValueChange = {
+                studentId = it
+                studentIdError = null
+                formError = null
+            },
+            label = { Text("Student ID") },
+            leadingIcon = { Icon(Icons.Filled.Badge, contentDescription = null) },
             singleLine = true,
-            isError = usernameError != null,
-            supportingText = { usernameError?.let { Text(it) } },
+            isError = studentIdError != null,
+            supportingText = { studentIdError?.let { Text(it) } },
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -150,7 +175,7 @@ fun LoginScreen(
         Spacer(Modifier.height(16.dp))
 
         Text(
-            text = "Try the demo account: demo / password123",
+            text = "Demo -> Campus: Taguig City University, Student ID: demo, Password: password123",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurface
         )

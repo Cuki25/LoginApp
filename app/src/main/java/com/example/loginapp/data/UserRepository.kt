@@ -2,37 +2,41 @@ package com.example.loginapp.data
 
 /**
  * A very simple in-memory user store.
- *
- * This keeps the example self-contained (no database or network needed).
- * For a real app you would replace this with a backend call, Room database,
- * DataStore, or a service like Firebase Authentication.
  */
+
 object UserRepository {
 
-    // username -> password
+    /** Composite identity for a student within a school. */
+    private data class UserKey(val studentId: String, val schoolId: String)
+
+    private fun keyOf(studentId: String, schoolId: String) =
+        UserKey(studentId.trim().lowercase(), schoolId.trim().lowercase())
+
+    // (studentId, schoolId) -> password
     private val users = mutableMapOf(
         // A demo account you can log in with right away:
-        "demo" to "password123"
+        // School id is the full campus name (lowercased by keyOf).
+        UserKey("demo", "taguig city university") to "password123"
     )
 
-    /** Returns true if the username already exists. */
-    fun userExists(username: String): Boolean =
-        users.containsKey(username.trim().lowercase())
+    /** Returns true if an account already exists for this student/school pair. */
+    fun userExists(studentId: String, schoolId: String): Boolean =
+        users.containsKey(keyOf(studentId, schoolId))
 
     /** Registers a new user. Returns a Result describing success or failure. */
-    fun register(username: String, password: String): AuthResult {
-        val key = username.trim().lowercase()
-        if (userExists(key)) {
-            return AuthResult.Error("That username is already taken.")
+    fun register(studentId: String, schoolId: String, password: String): AuthResult {
+        val key = keyOf(studentId, schoolId)
+        if (users.containsKey(key)) {
+            return AuthResult.Error("An account already exists for that Student ID at this school.")
         }
         users[key] = password
         return AuthResult.Success
     }
 
     /** Validates credentials. Returns a Result describing success or failure. */
-    fun login(username: String, password: String): AuthResult {
-        val key = username.trim().lowercase()
-        val stored = users[key] ?: return AuthResult.Error("No account found with that username.")
+    fun login(studentId: String, schoolId: String, password: String): AuthResult {
+        val stored = users[keyOf(studentId, schoolId)]
+            ?: return AuthResult.Error("No account found for that Student ID and School ID.")
         return if (stored == password) {
             AuthResult.Success
         } else {

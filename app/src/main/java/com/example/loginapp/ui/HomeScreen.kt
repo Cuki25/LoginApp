@@ -22,7 +22,8 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 fun HomeScreen(
-    username: String,
+    studentId: String,
+    schoolId: String,
     onLogout: () -> Unit
 ) {
     Column(
@@ -40,13 +41,18 @@ fun HomeScreen(
         )
         Spacer(Modifier.height(16.dp))
         Text(
-            text = "You're logged in!",
+            text = "MedKit Dashboard",
             style = MaterialTheme.typography.headlineSmall
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "Welcome, $username",
+            text = "Student ID: $studentId",
             style = MaterialTheme.typography.bodyLarge,
+            textAlign = TextAlign.Center
+        )
+        Text(
+            text = "School ID: $schoolId",
+            style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center
         )
         Spacer(Modifier.height(32.dp))
