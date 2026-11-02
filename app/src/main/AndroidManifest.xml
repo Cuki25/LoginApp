@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Required for all API calls to the Ktor backend -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <application
         android:allowBackup="true"
         android:label="@string/app_name"
@@ -15,6 +18,21 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!--
+                Deep-link intent filter for OAuth callbacks.
+                The Ktor server redirects to:
+                    medkit://auth/callback?token=...&email=...
+                after a successful Google / Microsoft sign-in.
+                Android routes that URI back to MainActivity so we can
+                extract the token and complete the login without leaving the app.
+            -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="medkit" android:host="auth" />
             </intent-filter>
         </activity>
     </application>

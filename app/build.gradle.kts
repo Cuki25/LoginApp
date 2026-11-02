@@ -68,5 +68,22 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.7.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.3")
 
+    // ── Networking ────────────────────────────────────────────────────────────
+    // Retrofit + Gson for REST calls to the Ktor backend.
+    implementation("com.squareup.retrofit2:retrofit:2.11.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.11.0")
+    // OkHttp logging — visible in Logcat during development.
+    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
+
+    // ── Coroutines ────────────────────────────────────────────────────────────
+    // suspend support for Retrofit (CallAdapter) and lifecycle scopes.
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.3")
+
+    // ── OAuth / Custom Tabs ───────────────────────────────────────────────────
+    // Opens the Google / Microsoft consent page in Chrome Custom Tab so the
+    // user never leaves the app context.
+    implementation("androidx.browser:browser:1.8.0")
+
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

@@ -1,6 +1,10 @@
 package com.example.loginapp.ui
 
+import android.content.Context
+import android.net.Uri
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -9,117 +13,157 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.loginapp.data.SessionManager
 import com.example.loginapp.data.SignUpDraft
-import com.example.loginapp.data.UserRepository
 import com.example.loginapp.ui.signup.ContactInfoScreen
 import com.example.loginapp.ui.signup.MedicalProfileScreen
 import com.example.loginapp.ui.signup.OtpVerificationScreen
 import com.example.loginapp.ui.signup.SignUpBasicInfoScreen
 import com.example.loginapp.ui.signup.SignUpContactScreen
 
-/** Route names used by the navigation graph. */
+/** All route strings in one place. */
 object Routes {
-    const val LOGIN = "login"
-
-    // Multi-step sign-up flow
-    const val SIGNUP_CONTACT = "signup/contact"
-    const val SIGNUP_OTP = "signup/otp"
-    const val SIGNUP_BASIC = "signup/basic"
-    const val SIGNUP_MEDICAL = "signup/medical"
+    const val LOGIN         = "login"
+    const val SIGNUP_AUTH   = "signup/auth"
+    const val SIGNUP_OTP    = "signup/otp"
+    const val SIGNUP_BASIC  = "signup/basic"
+    const val SIGNUP_MEDICAL  = "signup/medical"
     const val SIGNUP_CONTACTS = "signup/contacts"
 
-    const val DASHBOARD = "dashboard/{studentId}/{schoolId}"
-    fun dashboard(studentId: String, schoolId: String) = "dashboard/$studentId/$schoolId"
+    // email is URL-encoded by the caller before being embedded in the path.
+    const val DASHBOARD = "dashboard/{email}"
+    fun dashboard(email: String): String {
+        // Encode the email so the '@' and '.' don't confuse the nav graph.
+        val encoded = Uri.encode(email)
+        return "dashboard/$encoded"
+    }
 }
 
 /**
- * @param session          persists the login so the user stays logged in across launches.
- * @param startDestination chosen by MainActivity based on session.isLoggedIn().
+ * Root navigation graph.
+ *
+ * @param session           SharedPreferences session — persists JWT across launches.
+ * @param startDestination  Determined in [MainActivity] from [SessionManager.isLoggedIn].
+ * @param oauthDeepLinkUri  Non-null when MainActivity received a deep-link intent
+ *                          (medkit://auth/callback?token=...&email=...) from an OAuth
+ *                          callback. AppNavigation processes it once on composition.
  */
 @Composable
 fun AppNavigation(
     session: SessionManager,
-    startDestination: String
+    startDestination: String,
+    oauthDeepLinkUri: Uri? = null
 ) {
     val navController = rememberNavController()
+    val context       = LocalContext.current
+
+    // ── Process an incoming OAuth deep-link exactly once ─────────────────────
+    // MainActivity passes the URI when the activity was launched/resumed via the
+    // medkit://auth/callback deep-link after a Google/Microsoft sign-in.
+    if (oauthDeepLinkUri != null) {
+        val token  = oauthDeepLinkUri.getQueryParameter("token")
+        val email  = oauthDeepLinkUri.getQueryParameter("email")
+        val userId = oauthDeepLinkUri.getQueryParameter("userId") ?: ""
+        if (!token.isNullOrBlank() && !email.isNullOrBlank()) {
+            session.saveSession(
+                token    = token,
+                email    = email,
+                userId   = userId,
+                provider = oauthDeepLinkUri.getQueryParameter("provider") ?: "oauth"
+            )
+            // Navigate to dashboard, clearing the entire back stack.
+            navController.navigate(Routes.dashboard(email)) {
+                popUpTo(0) { inclusive = true }
+            }
+        }
+    }
 
     NavHost(navController = navController, startDestination = startDestination) {
 
-        // ---- Login ----
+        // ── Login ─────────────────────────────────────────────────────────────
         composable(Routes.LOGIN) {
             LoginScreen(
-                onLoginSuccess = { studentId, schoolId ->
-                    session.saveLoginSession(studentId, schoolId)
-                    navController.navigate(Routes.dashboard(studentId, schoolId)) {
+                onLoginSuccess = { token, email, userId ->
+                    session.saveSession(token = token, email = email, userId = userId)
+                    navController.navigate(Routes.dashboard(email)) {
                         popUpTo(Routes.LOGIN) { inclusive = true }
                     }
                 },
                 onNavigateToSignUp = {
                     SignUpDraft.clear()
-                    navController.navigate(Routes.SIGNUP_CONTACT)
+                    navController.navigate(Routes.SIGNUP_AUTH)
+                },
+                onOAuthGoogle = {
+                    openCustomTab(context, "http://10.0.2.2:8080/auth/google")
+                },
+                onOAuthMicrosoft = {
+                    openCustomTab(context, "http://10.0.2.2:8080/auth/microsoft")
                 }
             )
         }
 
-        // ---- Sign-up Step 1a: contact ----
-        composable(Routes.SIGNUP_CONTACT) {
+        // ── Sign-up step 1a: email + password (calls /auth/register) ──────────
+        composable(Routes.SIGNUP_AUTH) {
             SignUpContactScreen(
-                onCodeSent = { navController.navigate(Routes.SIGNUP_OTP) },
-                onBackToLogin = { navController.popBackStack(Routes.LOGIN, inclusive = false) }
+                onRegistered = { token, email, userId ->
+                    // Account created — save session so the profile steps run
+                    // "logged in". The OTP step is still shown for UX continuity.
+                    session.saveSession(token = token, email = email, userId = userId)
+                    navController.navigate(Routes.SIGNUP_OTP)
+                },
+                onOAuthGoogle    = { openCustomTab(context, "http://10.0.2.2:8080/auth/google") },
+                onOAuthMicrosoft = { openCustomTab(context, "http://10.0.2.2:8080/auth/microsoft") },
+                onBackToLogin    = { navController.popBackStack(Routes.LOGIN, inclusive = false) }
             )
         }
 
-        // ---- Sign-up Step 1b: OTP ----
+        // ── Sign-up step 1b: mock OTP verification ────────────────────────────
         composable(Routes.SIGNUP_OTP) {
             OtpVerificationScreen(
-                contact = SignUpDraft.contact,
+                email      = SignUpDraft.email,
                 onVerified = { navController.navigate(Routes.SIGNUP_BASIC) },
-                onResend = { /* mock: nothing to resend */ }
+                onResend   = { /* mock — nothing to resend */ }
             )
         }
 
-        // ---- Sign-up Step 2: basic info ----
+        // ── Sign-up step 2: basic profile info ────────────────────────────────
         composable(Routes.SIGNUP_BASIC) {
             SignUpBasicInfoScreen(
-                onContinue = {
-                    // Account details are now complete -> create the account and
-                    // persist the session so the optional screens are "logged in".
-                    registerAndLogin(session)
-                    navController.navigate(Routes.SIGNUP_MEDICAL)
-                }
+                onContinue = { navController.navigate(Routes.SIGNUP_MEDICAL) }
             )
         }
 
-        // ---- Sign-up Step 3: medical profile (skippable) ----
+        // ── Sign-up step 3: medical profile (skippable) ───────────────────────
         composable(Routes.SIGNUP_MEDICAL) {
             MedicalProfileScreen(
                 onContinue = { navController.navigate(Routes.SIGNUP_CONTACTS) },
-                onSkip = { navController.navigate(Routes.SIGNUP_CONTACTS) }
+                onSkip     = { navController.navigate(Routes.SIGNUP_CONTACTS) }
             )
         }
 
-        // ---- Sign-up Step 4: contact information (skippable) ----
+        // ── Sign-up step 4: contact information (skippable) ───────────────────
         composable(Routes.SIGNUP_CONTACTS) {
             ContactInfoScreen(
-                onFinish = { finishSignUp(navController) },
-                onSkip = { finishSignUp(navController) }
+                onFinish = { finishSignUp(navController, session) },
+                onSkip   = { finishSignUp(navController, session) }
             )
         }
 
-        // ---- Dashboard ----
+        // ── Dashboard ─────────────────────────────────────────────────────────
         composable(
-            route = Routes.DASHBOARD,
-            arguments = listOf(
-                navArgument("studentId") { type = NavType.StringType },
-                navArgument("schoolId") { type = NavType.StringType }
-            )
+            route     = Routes.DASHBOARD,
+            arguments = listOf(navArgument("email") { type = NavType.StringType })
         ) { backStackEntry ->
-            val studentId = backStackEntry.arguments?.getString("studentId") ?: "there"
-            val schoolId = backStackEntry.arguments?.getString("schoolId") ?: ""
+            val email = Uri.decode(
+                backStackEntry.arguments?.getString("email").orEmpty()
+            )
             HomeScreen(
-                studentId = studentId,
-                schoolId = schoolId,
-                onLogout = {
+                // HomeScreen still uses studentId/schoolId params for display;
+                // pass email as studentId, leave schoolId blank until the full
+                // profile migration in Phase 2.
+                studentId = email,
+                schoolId  = session.getUserId().orEmpty(),
+                onLogout  = {
                     session.clearSession()
+                    SignUpDraft.clear()
                     navController.navigate(Routes.LOGIN) {
                         popUpTo(0) { inclusive = true }
                     }
@@ -129,26 +173,27 @@ fun AppNavigation(
     }
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
 /**
- * Creates the account from the sign-up draft and persists the session.
- * TODO: replace UserRepository with a Room-backed store when the DB lands.
+ * Opens [url] in a Chrome Custom Tab. The OAuth flow redirects back via the
+ * medkit:// deep-link, which Android routes back to MainActivity.
  */
-private fun registerAndLogin(session: SessionManager) {
-    val studentId = SignUpDraft.studentId
-    val schoolId = SignUpDraft.campusId
-    // Register is idempotent-ish here: if it already exists we still log in.
-    UserRepository.register(studentId, schoolId, SignUpDraft.password)
-    session.saveLoginSession(studentId, schoolId)
+private fun openCustomTab(context: Context, url: String) {
+    CustomTabsIntent.Builder()
+        .setShowTitle(true)
+        .build()
+        .launchUrl(context, Uri.parse(url))
 }
 
-/** Ends the flow: navigate to the dashboard for the newly created account. */
-private fun finishSignUp(navController: NavHostController) {
-    // Capture before clearing the draft.
-    val studentId = SignUpDraft.studentId
-    val schoolId = SignUpDraft.campusId
+/**
+ * Completes the signup flow: captures the email from the draft before clearing
+ * it, then navigates to the dashboard with the full back stack removed.
+ */
+private fun finishSignUp(navController: NavHostController, session: SessionManager) {
+    val email = SignUpDraft.email.ifBlank { session.getEmail().orEmpty() }
     SignUpDraft.clear()
-    navController.navigate(Routes.dashboard(studentId, schoolId)) {
-        // Clear the whole sign-up back stack.
+    navController.navigate(Routes.dashboard(email)) {
         popUpTo(Routes.LOGIN) { inclusive = true }
     }
 }
