@@ -15,8 +15,10 @@ import retrofit2.converter.gson.GsonConverterFactory
  */
 object RetrofitClient {
 
-    // ── Change this when moving to a physical device or production ────────────
-    private const val BASE_URL = "http://10.0.2.2:8080/"
+    // ── Change this when moving to production ────────────────────────────────
+    // localhost:8080 is reached on a physical device via:
+    //   adb reverse tcp:8080 tcp:8080
+    private const val BASE_URL = "http://localhost:8080/"
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
         // BODY logs full request/response in Logcat — useful for development.

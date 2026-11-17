@@ -7,6 +7,10 @@ plugins {
 group = "com.medkit"
 version = "0.0.1"
 
+repositories {
+    mavenCentral()
+}
+
 application {
     mainClass.set("com.medkit.ApplicationKt")
     val isDevelopment = project.ext.has("development")
@@ -36,8 +40,8 @@ dependencies {
     // Password hashing — BCrypt
     implementation("org.mindrot:jbcrypt:0.4")
 
-    // SQL Server JDBC driver
-    implementation("com.microsoft.sqlserver:mssql-jdbc:12.6.1.jre11")
+    // PostgreSQL JDBC driver
+    implementation("org.postgresql:postgresql:42.7.4")
 
     // HikariCP — connection pooling
     implementation("com.zaxxer:HikariCP:5.1.0")

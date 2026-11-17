@@ -4,10 +4,35 @@ import java.sql.ResultSet
 import java.util.UUID
 
 /**
- * Mirrors the [MedicalProfiles] SQL table.
- * [conditions] and [medications] are stored as JSON arrays in NVARCHAR(MAX)
- * columns; they are returned as raw strings here and serialised/deserialised
- * in the service layer.
+ * Mirrors the [medical_profiles] PostgreSQL table.
+ * [conditions] and [medications] are stored as TEXT (JSON arrays as strings).
+ *
+ * PostgreSQL schema (run once against your Aiven DB):
+ *
+ *   CREATE TABLE medical_profiles (
+ *       id          UUID        NOT NULL DEFAULT gen_random_uuid(),
+ *       user_id     UUID        NOT NULL,
+ *       campus_id   TEXT,
+ *       student_id  TEXT,
+ *       first_name  TEXT,
+ *       last_name   TEXT,
+ *       middle_name TEXT,
+ *       birthday    DATE,
+ *       gender      TEXT,
+ *       blood_type  TEXT,
+ *       allergies   TEXT,
+ *       weight_kg   NUMERIC(5,2),
+ *       height_cm   NUMERIC(5,2),
+ *       conditions  TEXT,
+ *       medications TEXT,
+ *       updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+ *       CONSTRAINT pk_medical_profiles    PRIMARY KEY (id),
+ *       CONSTRAINT fk_medical_profiles_users
+ *           FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+ *       CONSTRAINT uq_medical_profiles_user UNIQUE (user_id)
+ *   );
+ *
+ * The UNIQUE constraint on user_id lets the INSERT … ON CONFLICT upsert work.
  */
 data class MedicalProfileRecord(
     val id:          UUID,
@@ -17,34 +42,29 @@ data class MedicalProfileRecord(
     val firstName:   String?,
     val lastName:    String?,
     val middleName:  String?,
-    val birthday:    String?,   // ISO-8601 date string "YYYY-MM-DD"
+    val birthday:    String?,
     val gender:      String?,
     val bloodType:   String?,
     val allergies:   String?,
     val weightKg:    Double?,
     val heightCm:    Double?,
-    val conditions:  String?,   // JSON array e.g. ["Asthma","Hypertension"]
-    val medications: String?    // JSON array e.g. ["Metformin 500mg"]
+    val conditions:  String?,
+    val medications: String?
 )
 
-/**
- * All SQL operations against the [MedicalProfiles] table.
- *
- * TODO (Phase 2): add updateProfile() and full read-by-userId.
- */
 object MedicalProfileQueries {
 
     fun findByUserId(userId: UUID): MedicalProfileRecord? = Database.connect { conn ->
         conn.prepareStatement(
             """
-            SELECT Id, UserId, CampusId, StudentId, FirstName, LastName,
-                   MiddleName, Birthday, Gender, BloodType, Allergies,
-                   WeightKg, HeightCm, Conditions, Medications
-            FROM MedicalProfiles
-            WHERE UserId = ?
+            SELECT id, user_id, campus_id, student_id, first_name, last_name,
+                   middle_name, birthday, gender, blood_type, allergies,
+                   weight_kg, height_cm, conditions, medications
+            FROM   medical_profiles
+            WHERE  user_id = ?
             """.trimIndent()
         ).use { stmt ->
-            stmt.setString(1, userId.toString())
+            stmt.setObject(1, userId)
             stmt.executeQuery().use { rs ->
                 if (rs.next()) rs.toRecord() else null
             }
@@ -52,18 +72,18 @@ object MedicalProfileQueries {
     }
 
     /**
-     * Creates an empty profile row linked to [userId].
-     * Called immediately after a new user registers so the foreign-key row
-     * always exists. Fields are filled in later via [upsertProfile].
+     * Creates an empty profile row for [userId].
+     * Uses ON CONFLICT DO NOTHING so it is safe to call more than once.
      */
     fun createEmpty(userId: UUID): UUID {
         val id = UUID.randomUUID()
         Database.connect { conn ->
             conn.prepareStatement(
-                "INSERT INTO MedicalProfiles (Id, UserId) VALUES (?, ?)"
+                "INSERT INTO medical_profiles (id, user_id) VALUES (?, ?) " +
+                "ON CONFLICT (user_id) DO NOTHING"
             ).use { stmt ->
-                stmt.setString(1, id.toString())
-                stmt.setString(2, userId.toString())
+                stmt.setObject(1, id)
+                stmt.setObject(2, userId)
                 stmt.executeUpdate()
             }
         }
@@ -71,8 +91,10 @@ object MedicalProfileQueries {
     }
 
     /**
-     * Upserts every editable field for the profile belonging to [userId].
-     * Uses a MERGE statement so callers don't need to know if the row exists.
+     * Upserts every editable field for [userId].
+     *
+     * PostgreSQL equivalent of T-SQL MERGE: INSERT … ON CONFLICT (user_id) DO UPDATE.
+     * Requires the UNIQUE constraint on user_id (see schema above).
      */
     fun upsertProfile(
         userId:      UUID,
@@ -92,57 +114,45 @@ object MedicalProfileQueries {
     ) = Database.connect { conn ->
         conn.prepareStatement(
             """
-            MERGE MedicalProfiles AS target
-            USING (SELECT CAST(? AS UNIQUEIDENTIFIER) AS UserId) AS src
-              ON target.UserId = src.UserId
-            WHEN MATCHED THEN UPDATE SET
-                CampusId   = ?, StudentId  = ?, FirstName  = ?, LastName   = ?,
-                MiddleName = ?, Birthday   = ?, Gender     = ?, BloodType  = ?,
-                Allergies  = ?, WeightKg   = ?, HeightCm   = ?,
-                Conditions = ?, Medications = ?, UpdatedAt = SYSUTCDATETIME()
-            WHEN NOT MATCHED THEN INSERT
-                (Id, UserId, CampusId, StudentId, FirstName, LastName,
-                 MiddleName, Birthday, Gender, BloodType, Allergies,
-                 WeightKg, HeightCm, Conditions, Medications)
+            INSERT INTO medical_profiles
+                (id, user_id, campus_id, student_id, first_name, last_name,
+                 middle_name, birthday, gender, blood_type, allergies,
+                 weight_kg, height_cm, conditions, medications, updated_at)
             VALUES
-                (NEWID(), CAST(? AS UNIQUEIDENTIFIER),
-                 ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                (gen_random_uuid(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now())
+            ON CONFLICT (user_id) DO UPDATE SET
+                campus_id   = EXCLUDED.campus_id,
+                student_id  = EXCLUDED.student_id,
+                first_name  = EXCLUDED.first_name,
+                last_name   = EXCLUDED.last_name,
+                middle_name = EXCLUDED.middle_name,
+                birthday    = EXCLUDED.birthday,
+                gender      = EXCLUDED.gender,
+                blood_type  = EXCLUDED.blood_type,
+                allergies   = EXCLUDED.allergies,
+                weight_kg   = EXCLUDED.weight_kg,
+                height_cm   = EXCLUDED.height_cm,
+                conditions  = EXCLUDED.conditions,
+                medications = EXCLUDED.medications,
+                updated_at  = now()
             """.trimIndent()
         ).use { stmt ->
-            // WHEN MATCHED params (1..15)
-            stmt.setString(1, userId.toString())
-            stmt.setString(2,  campusId)
-            stmt.setString(3,  studentId)
-            stmt.setString(4,  firstName)
-            stmt.setString(5,  lastName)
-            stmt.setString(6,  middleName)
-            stmt.setString(7,  birthday)
-            stmt.setString(8,  gender)
-            stmt.setString(9,  bloodType)
+            stmt.setObject(1, userId)
+            stmt.setString(2, campusId)
+            stmt.setString(3, studentId)
+            stmt.setString(4, firstName)
+            stmt.setString(5, lastName)
+            stmt.setString(6, middleName)
+            stmt.setString(7, birthday)
+            stmt.setString(8, gender)
+            stmt.setString(9, bloodType)
             stmt.setString(10, allergies)
             if (weightKg != null) stmt.setDouble(11, weightKg)
-            else stmt.setNull(11, java.sql.Types.DECIMAL)
+            else stmt.setNull(11, java.sql.Types.NUMERIC)
             if (heightCm != null) stmt.setDouble(12, heightCm)
-            else stmt.setNull(12, java.sql.Types.DECIMAL)
+            else stmt.setNull(12, java.sql.Types.NUMERIC)
             stmt.setString(13, conditions)
             stmt.setString(14, medications)
-            // WHEN NOT MATCHED params (15..29)
-            stmt.setString(15, userId.toString())
-            stmt.setString(16, campusId)
-            stmt.setString(17, studentId)
-            stmt.setString(18, firstName)
-            stmt.setString(19, lastName)
-            stmt.setString(20, middleName)
-            stmt.setString(21, birthday)
-            stmt.setString(22, gender)
-            stmt.setString(23, bloodType)
-            stmt.setString(24, allergies)
-            if (weightKg != null) stmt.setDouble(25, weightKg)
-            else stmt.setNull(25, java.sql.Types.DECIMAL)
-            if (heightCm != null) stmt.setDouble(26, heightCm)
-            else stmt.setNull(26, java.sql.Types.DECIMAL)
-            stmt.setString(27, conditions)
-            stmt.setString(28, medications)
             stmt.executeUpdate()
         }
     }
@@ -150,20 +160,20 @@ object MedicalProfileQueries {
     // ── Helper ────────────────────────────────────────────────────────────────
 
     private fun ResultSet.toRecord() = MedicalProfileRecord(
-        id          = UUID.fromString(getString("Id")),
-        userId      = UUID.fromString(getString("UserId")),
-        campusId    = getString("CampusId"),
-        studentId   = getString("StudentId"),
-        firstName   = getString("FirstName"),
-        lastName    = getString("LastName"),
-        middleName  = getString("MiddleName"),
-        birthday    = getString("Birthday"),
-        gender      = getString("Gender"),
-        bloodType   = getString("BloodType"),
-        allergies   = getString("Allergies"),
-        weightKg    = getDouble("WeightKg").takeIf { !wasNull() },
-        heightCm    = getDouble("HeightCm").takeIf { !wasNull() },
-        conditions  = getString("Conditions"),
-        medications = getString("Medications")
+        id          = getObject("id",        UUID::class.java),
+        userId      = getObject("user_id",   UUID::class.java),
+        campusId    = getString("campus_id"),
+        studentId   = getString("student_id"),
+        firstName   = getString("first_name"),
+        lastName    = getString("last_name"),
+        middleName  = getString("middle_name"),
+        birthday    = getString("birthday"),
+        gender      = getString("gender"),
+        bloodType   = getString("blood_type"),
+        allergies   = getString("allergies"),
+        weightKg    = getDouble("weight_kg").takeIf { !wasNull() },
+        heightCm    = getDouble("height_cm").takeIf { !wasNull() },
+        conditions  = getString("conditions"),
+        medications = getString("medications")
     )
 }

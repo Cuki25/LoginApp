@@ -38,6 +38,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.loginapp.data.AuthRepository
 import com.example.loginapp.data.AuthResult
+import com.example.loginapp.data.AuthSuccessData
 import com.example.loginapp.data.SignUpDraft
 import kotlinx.coroutines.launch
 
@@ -83,12 +84,12 @@ fun SignUpContactScreen(
         scope.launch {
             when (val result = repo.register(email.trim(), password)) {
                 is AuthResult.Success -> {
-                    // Stash in draft so later steps and AppNavigation can access them.
-                    SignUpDraft.email            = result.email
+                    val data = result.data
+                    SignUpDraft.email            = data.email
                     SignUpDraft.password         = password
-                    SignUpDraft.registeredToken  = result.token
-                    SignUpDraft.registeredUserId = result.userId
-                    onRegistered(result.token, result.email, result.userId)
+                    SignUpDraft.registeredToken  = data.token
+                    SignUpDraft.registeredUserId = data.userId
+                    onRegistered(data.token, data.email, data.userId)
                 }
                 is AuthResult.Error -> {
                     formError = result.message

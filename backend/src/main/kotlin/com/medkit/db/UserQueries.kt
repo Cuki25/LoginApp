@@ -4,29 +4,42 @@ import java.sql.ResultSet
 import java.util.UUID
 
 /**
- * Mirrors the [Users] SQL table exactly. [passwordHash] is nullable because
- * OAuth-only accounts never have a password.
+ * Mirrors the [users] PostgreSQL table.
+ * [passwordHash] is nullable — OAuth-only accounts never have a password.
+ *
+ * PostgreSQL schema (run once against your Aiven DB):
+ *
+ *   CREATE TABLE users (
+ *       id                  UUID        NOT NULL DEFAULT gen_random_uuid(),
+ *       email               TEXT        NOT NULL,
+ *       password_hash       TEXT,
+ *       auth_provider       TEXT        NOT NULL DEFAULT 'local',
+ *       provider_subject_id TEXT,
+ *       created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+ *       CONSTRAINT pk_users            PRIMARY KEY (id),
+ *       CONSTRAINT uq_users_email      UNIQUE (email),
+ *       CONSTRAINT uq_users_provider   UNIQUE (auth_provider, provider_subject_id)
+ *   );
+ *   CREATE INDEX ix_users_email    ON users(email);
+ *   CREATE INDEX ix_users_provider ON users(auth_provider, provider_subject_id)
+ *       WHERE provider_subject_id IS NOT NULL;
  */
 data class UserRecord(
     val id:                UUID,
     val email:             String,
-    val passwordHash:      String?,   // null for OAuth-only accounts
-    val authProvider:      String,    // "local" | "google" | "microsoft"
-    val providerSubjectId: String?    // OAuth subject/sub claim
+    val passwordHash:      String?,
+    val authProvider:      String,
+    val providerSubjectId: String?
 )
 
-/**
- * All SQL operations against the [Users] table.
- * Plain JDBC — no ORM — so every query is explicit and easy to audit.
- */
 object UserQueries {
 
-    // ── Reads ────────────────────────────────────────────────────────────────
+    // ── Reads ─────────────────────────────────────────────────────────────────
 
     fun findByEmail(email: String): UserRecord? = Database.connect { conn ->
         conn.prepareStatement(
-            "SELECT Id, Email, PasswordHash, AuthProvider, ProviderSubjectId " +
-            "FROM Users WHERE Email = ?"
+            "SELECT id, email, password_hash, auth_provider, provider_subject_id " +
+            "FROM users WHERE email = ?"
         ).use { stmt ->
             stmt.setString(1, email.trim().lowercase())
             stmt.executeQuery().use { rs ->
@@ -38,8 +51,8 @@ object UserQueries {
     fun findByProvider(provider: String, subjectId: String): UserRecord? =
         Database.connect { conn ->
             conn.prepareStatement(
-                "SELECT Id, Email, PasswordHash, AuthProvider, ProviderSubjectId " +
-                "FROM Users WHERE AuthProvider = ? AND ProviderSubjectId = ?"
+                "SELECT id, email, password_hash, auth_provider, provider_subject_id " +
+                "FROM users WHERE auth_provider = ? AND provider_subject_id = ?"
             ).use { stmt ->
                 stmt.setString(1, provider)
                 stmt.setString(2, subjectId)
@@ -51,31 +64,26 @@ object UserQueries {
 
     fun findById(id: UUID): UserRecord? = Database.connect { conn ->
         conn.prepareStatement(
-            "SELECT Id, Email, PasswordHash, AuthProvider, ProviderSubjectId " +
-            "FROM Users WHERE Id = ?"
+            "SELECT id, email, password_hash, auth_provider, provider_subject_id " +
+            "FROM users WHERE id = ?"
         ).use { stmt ->
-            stmt.setString(1, id.toString())
+            stmt.setObject(1, id)   // PostgreSQL UUID type — use setObject, not setString
             stmt.executeQuery().use { rs ->
                 if (rs.next()) rs.toUserRecord() else null
             }
         }
     }
 
-    // ── Writes ───────────────────────────────────────────────────────────────
+    // ── Writes ────────────────────────────────────────────────────────────────
 
-    /**
-     * Inserts a new local (email + password) user.
-     * The caller must pass an already-hashed password — plain text is never
-     * written here.
-     */
     fun insertLocal(email: String, passwordHash: String): UUID {
         val id = UUID.randomUUID()
         Database.connect { conn ->
             conn.prepareStatement(
-                "INSERT INTO Users (Id, Email, PasswordHash, AuthProvider) " +
+                "INSERT INTO users (id, email, password_hash, auth_provider) " +
                 "VALUES (?, ?, ?, 'local')"
             ).use { stmt ->
-                stmt.setString(1, id.toString())
+                stmt.setObject(1, id)
                 stmt.setString(2, email.trim().lowercase())
                 stmt.setString(3, passwordHash)
                 stmt.executeUpdate()
@@ -84,18 +92,14 @@ object UserQueries {
         return id
     }
 
-    /**
-     * Inserts a new OAuth user (no password).
-     * [provider] should be "google" or "microsoft".
-     */
     fun insertOAuth(email: String, provider: String, subjectId: String): UUID {
         val id = UUID.randomUUID()
         Database.connect { conn ->
             conn.prepareStatement(
-                "INSERT INTO Users (Id, Email, PasswordHash, AuthProvider, ProviderSubjectId) " +
+                "INSERT INTO users (id, email, password_hash, auth_provider, provider_subject_id) " +
                 "VALUES (?, ?, NULL, ?, ?)"
             ).use { stmt ->
-                stmt.setString(1, id.toString())
+                stmt.setObject(1, id)
                 stmt.setString(2, email.trim().lowercase())
                 stmt.setString(3, provider)
                 stmt.setString(4, subjectId)
@@ -105,13 +109,13 @@ object UserQueries {
         return id
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
+    // ── Helper ────────────────────────────────────────────────────────────────
 
     private fun ResultSet.toUserRecord() = UserRecord(
-        id                = UUID.fromString(getString("Id")),
-        email             = getString("Email"),
-        passwordHash      = getString("PasswordHash"),
-        authProvider      = getString("AuthProvider"),
-        providerSubjectId = getString("ProviderSubjectId")
+        id                = getObject("id", UUID::class.java),
+        email             = getString("email"),
+        passwordHash      = getString("password_hash"),
+        authProvider      = getString("auth_provider"),
+        providerSubjectId = getString("provider_subject_id")
     )
 }

@@ -47,8 +47,8 @@ class MainActivity : ComponentActivity() {
         //  • OAuth deep-link → AppNavigation will handle the navigation
         //  • Neither         → login screen
         val startDestination = when {
-            oauthDeepLinkUri != null -> Routes.LOGIN  // AppNavigation redirects from here
-            session.isLoggedIn()     -> Routes.dashboard(session.getEmail().orEmpty())
+            oauthDeepLinkUri != null -> Routes.LOGIN
+            session.isLoggedIn()     -> Routes.dashboardFor(session.getRole())
             else                     -> Routes.LOGIN
         }
 

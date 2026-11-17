@@ -4,122 +4,97 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * All SQL operations against the [EmailVerifications] table.
+ * All SQL operations against the [email_verifications] table.
  *
  * OTPs are stored as BCrypt hashes — the plain-text code is never written
- * to the database. The [com.medkit.auth.PasswordService] is reused for
- * hash/verify so we don't pull in a second hashing library.
+ * to the database.
  *
- * Schema (run in SSMS before starting the server):
+ * PostgreSQL schema (run once against your Aiven DB):
  *
- *   CREATE TABLE EmailVerifications (
- *       Id        UNIQUEIDENTIFIER NOT NULL DEFAULT NEWSEQUENTIALID(),
- *       Email     NVARCHAR(320)    NOT NULL,
- *       OtpHash   NVARCHAR(255)    NOT NULL,
- *       ExpiresAt DATETIME2        NOT NULL,
- *       Verified  BIT              NOT NULL DEFAULT 0,
- *       CreatedAt DATETIME2        NOT NULL DEFAULT SYSUTCDATETIME(),
- *       CONSTRAINT PK_EmailVerifications PRIMARY KEY (Id)
+ *   CREATE TABLE email_verifications (
+ *       id          UUID        NOT NULL DEFAULT gen_random_uuid(),
+ *       email       TEXT        NOT NULL,
+ *       otp_hash    TEXT        NOT NULL,
+ *       expires_at  TIMESTAMPTZ NOT NULL,
+ *       verified    BOOLEAN     NOT NULL DEFAULT FALSE,
+ *       created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+ *       CONSTRAINT pk_email_verifications PRIMARY KEY (id)
  *   );
- *   CREATE INDEX IX_EmailVerifications_Email ON EmailVerifications(Email);
+ *   CREATE INDEX ix_email_verifications_email ON email_verifications(email);
  */
 object OtpQueries {
 
-    /**
-     * Inserts a new OTP row.
-     *
-     * @param email     normalised (trimmed, lowercase) recipient email
-     * @param otpHash   BCrypt hash of the plain-text 6-digit code
-     * @param expiresAt when the code stops being valid
-     */
     fun insertOtp(email: String, otpHash: String, expiresAt: Instant) {
         val id = UUID.randomUUID()
         Database.connect { conn ->
             conn.prepareStatement(
-                """
-                INSERT INTO EmailVerifications (Id, Email, OtpHash, ExpiresAt)
-                VALUES (?, ?, ?, ?)
-                """.trimIndent()
+                "INSERT INTO email_verifications (id, email, otp_hash, expires_at) " +
+                "VALUES (?, ?, ?, ?)"
             ).use { stmt ->
-                stmt.setString(1, id.toString())
+                stmt.setObject(1, id)
                 stmt.setString(2, email)
                 stmt.setString(3, otpHash)
-                // SQL Server JDBC accepts java.sql.Timestamp for DATETIME2
-                stmt.setTimestamp(4, java.sql.Timestamp.from(expiresAt))
+                // PostgreSQL JDBC accepts OffsetDateTime or Timestamp for TIMESTAMPTZ
+                stmt.setObject(4, expiresAt.atOffset(java.time.ZoneOffset.UTC))
                 stmt.executeUpdate()
             }
         }
     }
 
     /**
-     * Returns the most recent unexpired, unverified OTP hash for [email],
-     * or null if none exists.
-     *
-     * We always take the newest row so a resend overwrites the old code in
-     * effect (old rows are left in the table but ignored).
+     * Returns the most recent unexpired, unverified OTP row for [email].
+     * PostgreSQL: ORDER BY … LIMIT 1 replaces T-SQL's TOP 1.
      */
     fun findLatestPending(email: String): OtpRow? = Database.connect { conn ->
         conn.prepareStatement(
             """
-            SELECT TOP 1 Id, OtpHash, ExpiresAt
-            FROM EmailVerifications
-            WHERE Email   = ?
-              AND Verified = 0
-              AND ExpiresAt > SYSUTCDATETIME()
-            ORDER BY CreatedAt DESC
+            SELECT id, otp_hash, expires_at
+            FROM   email_verifications
+            WHERE  email      = ?
+              AND  verified   = FALSE
+              AND  expires_at > now()
+            ORDER BY created_at DESC
+            LIMIT 1
             """.trimIndent()
         ).use { stmt ->
             stmt.setString(1, email)
             stmt.executeQuery().use { rs ->
                 if (rs.next()) {
                     OtpRow(
-                        id        = UUID.fromString(rs.getString("Id")),
-                        otpHash   = rs.getString("OtpHash"),
-                        expiresAt = rs.getTimestamp("ExpiresAt").toInstant()
+                        id        = rs.getObject("id", UUID::class.java),
+                        otpHash   = rs.getString("otp_hash"),
+                        expiresAt = rs.getObject("expires_at",
+                                        java.time.OffsetDateTime::class.java).toInstant()
                     )
                 } else null
             }
         }
     }
 
-    /**
-     * Marks the row with [id] as verified. Call this only after the hash has
-     * been successfully verified in the service layer.
-     */
     fun markVerified(id: UUID) {
         Database.connect { conn ->
             conn.prepareStatement(
-                "UPDATE EmailVerifications SET Verified = 1 WHERE Id = ?"
+                "UPDATE email_verifications SET verified = TRUE WHERE id = ?"
             ).use { stmt ->
-                stmt.setString(1, id.toString())
+                stmt.setObject(1, id)
                 stmt.executeUpdate()
             }
         }
     }
 
-    /**
-     * Returns true if there is at least one verified OTP row for [email].
-     * Used by [/auth/register] to confirm the address was validated before
-     * the account is created.
-     */
     fun isEmailVerified(email: String): Boolean = Database.connect { conn ->
         conn.prepareStatement(
-            "SELECT TOP 1 1 FROM EmailVerifications WHERE Email = ? AND Verified = 1"
+            "SELECT 1 FROM email_verifications WHERE email = ? AND verified = TRUE LIMIT 1"
         ).use { stmt ->
             stmt.setString(1, email)
             stmt.executeQuery().use { rs -> rs.next() }
         }
     }
 
-    /**
-     * Housekeeping: deletes all rows (verified or expired) for [email].
-     * Called after a successful registration so the table doesn't accumulate
-     * stale rows.
-     */
     fun deleteForEmail(email: String) {
         Database.connect { conn ->
             conn.prepareStatement(
-                "DELETE FROM EmailVerifications WHERE Email = ?"
+                "DELETE FROM email_verifications WHERE email = ?"
             ).use { stmt ->
                 stmt.setString(1, email)
                 stmt.executeUpdate()
@@ -128,7 +103,6 @@ object OtpQueries {
     }
 }
 
-/** Lightweight projection — only the fields the service layer needs. */
 data class OtpRow(
     val id:        UUID,
     val otpHash:   String,
