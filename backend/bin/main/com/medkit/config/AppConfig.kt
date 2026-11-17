@@ -25,7 +25,10 @@ object AppConfig {
     val jwtExpiryMinutes: Long   = env.getOrDefault("JWT_EXPIRY_MINUTES", "1440").toLong()
 
     // ── Server ────────────────────────────────────────────────────────────────
-    val serverPort: Int = env.getOrDefault("SERVER_PORT", "8080").toInt()
+    // Render injects PORT; fall back to SERVER_PORT for local dev, then 8080.
+    val serverPort: Int =
+        System.getenv("PORT")?.toIntOrNull()
+            ?: env.getOrDefault("SERVER_PORT", "8080").toInt()
 
     // ── Google OAuth ─────────────────────────────────────────────────────────
     val googleClientId:     String = env.getOrDefault("GOOGLE_CLIENT_ID", "")

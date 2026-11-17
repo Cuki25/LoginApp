@@ -11,3 +11,7 @@ local.properties
 
 # Project exclude paths
 /app/build/
+
+# ── Secrets — never commit these ─────────────────────────────────────────────
+.env
+backend/.env
