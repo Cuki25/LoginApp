@@ -9,8 +9,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Phone
-import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.material3.*import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -48,16 +47,16 @@ fun SpeedDialScreen() {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MedKitBackground)
+            .background(MaterialTheme.colorScheme.background)
     ) {
         Column(
             modifier = Modifier
-                .background(MedKitPrimary)
+                .background(MaterialTheme.colorScheme.primary)
                 .padding(horizontal = 20.dp, vertical = 20.dp)
                 .fillMaxWidth()
         ) {
             Text("Speed-dial", fontSize = 20.sp, fontWeight = FontWeight.Bold,
-                color = Color.White)
+                color = MaterialTheme.colorScheme.onPrimary)
         }
 
         Column(
@@ -134,11 +133,19 @@ private fun DialButton(entry: DialEntry, onClick: () -> Unit) {
     Button(
         onClick  = onClick,
         shape    = FieldShape,
-        colors   = ButtonDefaults.buttonColors(containerColor = MedKitPrimary),
+        colors   = ButtonDefaults.buttonColors(
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor   = MaterialTheme.colorScheme.onPrimary
+        ),
         modifier = Modifier.fillMaxWidth().height(52.dp)
     ) {
-        Icon(Icons.Filled.Phone, null, modifier = Modifier.size(18.dp))
+        Icon(Icons.Filled.Phone, null,
+            tint     = MaterialTheme.colorScheme.onPrimary,
+            modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(10.dp))
-        Text("${entry.label}  ${entry.number}", fontWeight = FontWeight.Medium, fontSize = 14.sp)
+        Text("${entry.label}  ${entry.number}",
+            fontWeight = FontWeight.Medium,
+            fontSize   = 14.sp,
+            color      = MaterialTheme.colorScheme.onPrimary)
     }
 }

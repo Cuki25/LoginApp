@@ -4,7 +4,6 @@ import android.content.Context
 import android.net.Uri
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
@@ -13,6 +12,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.example.loginapp.data.AppPreferences
 import com.example.loginapp.data.SessionManager
 import com.example.loginapp.data.SignUpDraft
 import com.example.loginapp.ui.auth.AuthViewModel
@@ -22,32 +22,25 @@ import com.example.loginapp.ui.auth.RegisterScreen
 import com.example.loginapp.ui.dashboard.AdminDashboard
 import com.example.loginapp.ui.dashboard.SuperAdminDashboard
 import com.example.loginapp.ui.dashboard.UserDashboard
+import com.example.loginapp.ui.main.MainAppScaffold
 import com.example.loginapp.ui.signup.ContactInfoScreen
 import com.example.loginapp.ui.signup.MedicalProfileScreen
 import com.example.loginapp.ui.signup.SignUpBasicInfoScreen
 
-// ── Route constants ───────────────────────────────────────────────────────────
-
 object Routes {
-    // Auth
     const val LOGIN    = "login"
     const val REGISTER = "register"
-    const val OTP_VERIFY = "otp_verify/{email}"    // path param: url-encoded email
+    const val OTP_VERIFY = "otp_verify/{email}"
     fun otpVerify(email: String) = "otp_verify/${Uri.encode(email)}"
 
-    // Role-based dashboards
     const val USER_DASHBOARD        = "user_dashboard"
     const val ADMIN_DASHBOARD       = "admin_dashboard"
     const val SUPER_ADMIN_DASHBOARD = "super_admin_dashboard"
 
-    // Legacy multi-step signup profile steps (kept, not entry points)
     const val SIGNUP_BASIC    = "signup/basic"
     const val SIGNUP_MEDICAL  = "signup/medical"
     const val SIGNUP_CONTACTS = "signup/contacts"
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
-
-    /** Returns the correct dashboard route for [role]. */
     fun dashboardFor(role: String): String = when (role) {
         "admin"       -> ADMIN_DASHBOARD
         "super_admin" -> SUPER_ADMIN_DASHBOARD
@@ -55,21 +48,17 @@ object Routes {
     }
 }
 
-// ── Root navigation graph ──────────────────────────────────────────────────────
-
 @Composable
 fun AppNavigation(
     session:          SessionManager,
+    appPrefs:         AppPreferences,
     startDestination: String,
     oauthDeepLinkUri: Uri? = null
 ) {
     val navController = rememberNavController()
     val context       = LocalContext.current
-
-    // Single shared AuthViewModel across auth screens — survives configuration change.
     val authViewModel: AuthViewModel = viewModel()
 
-    // ── Process OAuth deep-link callback ──────────────────────────────────────
     if (oauthDeepLinkUri != null) {
         val token    = oauthDeepLinkUri.getQueryParameter("token")
         val email    = oauthDeepLinkUri.getQueryParameter("email")
@@ -87,30 +76,26 @@ fun AppNavigation(
 
     NavHost(navController = navController, startDestination = startDestination) {
 
-        // ── Login ─────────────────────────────────────────────────────────────
         composable(Routes.LOGIN) {
             LoginScreen(
                 viewModel          = authViewModel,
                 onLoginSuccess     = { data ->
                     session.saveSession(
-                        token    = data.token,
-                        email    = data.email,
-                        userId   = data.userId,
-                        role     = data.role
+                        token  = data.token,
+                        email  = data.email,
+                        userId = data.userId,
+                        role   = data.role
                     )
                     navController.navigate(Routes.dashboardFor(data.role)) {
                         popUpTo(Routes.LOGIN) { inclusive = true }
                     }
                 },
-                onNavigateToRegister = {
-                    navController.navigate(Routes.REGISTER)
-                },
+                onNavigateToRegister = { navController.navigate(Routes.REGISTER) },
                 onOAuthGoogle    = { openCustomTab(context, "https://medkit-backend.onrender.com/auth/google") },
                 onOAuthMicrosoft = { openCustomTab(context, "https://medkit-backend.onrender.com/auth/microsoft") }
             )
         }
 
-        // ── Register ──────────────────────────────────────────────────────────
         composable(Routes.REGISTER) {
             RegisterScreen(
                 viewModel      = authViewModel,
@@ -124,7 +109,6 @@ fun AppNavigation(
             )
         }
 
-        // ── OTP Verification ──────────────────────────────────────────────────
         composable(
             route     = Routes.OTP_VERIFY,
             arguments = listOf(navArgument("email") { type = NavType.StringType })
@@ -140,10 +124,10 @@ fun AppNavigation(
                 studentNumber = studentNumber,
                 onVerified    = { data ->
                     session.saveSession(
-                        token    = data.token,
-                        email    = data.email,
-                        userId   = data.userId,
-                        role     = data.role
+                        token  = data.token,
+                        email  = data.email,
+                        userId = data.userId,
+                        role   = data.role
                     )
                     SignUpDraft.clear()
                     navController.navigate(Routes.SIGNUP_BASIC) {
@@ -154,7 +138,6 @@ fun AppNavigation(
             )
         }
 
-        // ── Profile steps (post-registration) ────────────────────────────────
         composable(Routes.SIGNUP_BASIC) {
             SignUpBasicInfoScreen(
                 onContinue = { navController.navigate(Routes.SIGNUP_MEDICAL) }
@@ -173,10 +156,11 @@ fun AppNavigation(
             )
         }
 
-        // ── Role-based dashboards ─────────────────────────────────────────────
+        // ── Dashboards — all use MainAppScaffold which hosts the 6-tab nav ───
         composable(Routes.USER_DASHBOARD) {
-            UserDashboard(
+            MainAppScaffold(
                 email    = session.getEmail().orEmpty(),
+                appPrefs = appPrefs,
                 onLogout = { logout(navController, session) }
             )
         }
@@ -195,19 +179,13 @@ fun AppNavigation(
     }
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 private fun openCustomTab(context: Context, url: String) {
-    CustomTabsIntent.Builder()
-        .setShowTitle(true)
-        .build()
-        .launchUrl(context, Uri.parse(url))
+    CustomTabsIntent.Builder().setShowTitle(true).build().launchUrl(context, Uri.parse(url))
 }
 
 private fun finishProfileSetup(navController: NavHostController, session: SessionManager) {
-    val role = session.getRole()
     SignUpDraft.clear()
-    navController.navigate(Routes.dashboardFor(role)) {
+    navController.navigate(Routes.dashboardFor(session.getRole())) {
         popUpTo(Routes.LOGIN) { inclusive = true }
     }
 }
@@ -215,7 +193,5 @@ private fun finishProfileSetup(navController: NavHostController, session: Sessio
 private fun logout(navController: NavHostController, session: SessionManager) {
     session.clearSession()
     SignUpDraft.clear()
-    navController.navigate(Routes.LOGIN) {
-        popUpTo(0) { inclusive = true }
-    }
+    navController.navigate(Routes.LOGIN) { popUpTo(0) { inclusive = true } }
 }

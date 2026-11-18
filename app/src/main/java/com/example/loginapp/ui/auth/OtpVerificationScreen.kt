@@ -171,6 +171,18 @@ fun OtpVerificationScreen(
 
         Spacer(Modifier.height(16.dp))
 
+        // ── Spam folder hint ──────────────────────────────────────────────────
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Didn't receive the email? Check your spam folder or server logs during testing.",
+            style     = MaterialTheme.typography.bodySmall,
+            color     = MedKitInkFaint,
+            textAlign = TextAlign.Center,
+            modifier  = Modifier.fillMaxWidth()
+        )
+
+        Spacer(Modifier.height(4.dp))
+
         // ── Resend link ───────────────────────────────────────────────────────
         Row(
             horizontalArrangement = Arrangement.Center,

@@ -12,6 +12,7 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
+import com.example.loginapp.data.AppPreferences
 import com.example.loginapp.ui.firstaid.FirstAidListScreen
 import com.example.loginapp.ui.firstaid.FirstAidModuleScreen
 import com.example.loginapp.ui.home.HomeScreen
@@ -24,40 +25,30 @@ import com.example.loginapp.ui.theme.MedKitLine
 import com.example.loginapp.ui.theme.MedKitPrimary
 import com.example.loginapp.ui.theme.MedKitSurface
 
-private data class BottomNavItem(
-    val route: String,
-    val label: String,
-    val icon:  ImageVector
-)
+private data class BottomNavItem(val route: String, val label: String, val icon: ImageVector)
 
 private val bottomNavItems = listOf(
-    BottomNavItem("home",     "Home",     Icons.Filled.Home),
-    BottomNavItem("firstaid", "First Aid", Icons.Filled.MedicalServices),
-    BottomNavItem("hospitals","Hospitals", Icons.Filled.LocalHospital),
-    BottomNavItem("dial",     "Dial",      Icons.Filled.Phone),
-    BottomNavItem("lookup",   "Look-up",   Icons.Filled.Search),
-    BottomNavItem("profile",  "Profile",   Icons.Filled.Person)
+    BottomNavItem("home",      "Home",      Icons.Filled.Home),
+    BottomNavItem("firstaid",  "First Aid", Icons.Filled.MedicalServices),
+    BottomNavItem("hospitals", "Hospitals", Icons.Filled.LocalHospital),
+    BottomNavItem("dial",      "Dial",      Icons.Filled.Phone),
+    BottomNavItem("lookup",    "Look-up",   Icons.Filled.Search),
+    BottomNavItem("profile",   "Profile",   Icons.Filled.Person)
 )
 
-// Routes not shown in the bottom bar
 private const val ROUTE_SYMPTOMS = "symptoms"
 private const val ROUTE_MODULE   = "module/{moduleId}"
 private fun moduleRoute(id: String) = "module/$id"
 
-/**
- * Main app scaffold shown after login — contains the bottom nav bar
- * and all inner-app screens.
- */
 @Composable
 fun MainAppScaffold(
     email:    String,
+    appPrefs: AppPreferences,
     onLogout: () -> Unit
 ) {
     val navController = rememberNavController()
     val currentBack   by navController.currentBackStackEntryAsState()
     val currentRoute  = currentBack?.destination?.route
-
-    // Show bottom bar only on top-level tab routes
     val showBottomBar = bottomNavItems.any { it.route == currentRoute }
 
     Scaffold(
@@ -82,9 +73,7 @@ fun MainAppScaffold(
                                     }
                                 }
                             },
-                            icon  = {
-                                Icon(item.icon, contentDescription = item.label)
-                            },
+                            icon  = { Icon(item.icon, contentDescription = item.label) },
                             label = { Text(item.label, fontSize = 10.sp) },
                             colors = NavigationBarItemDefaults.colors(
                                 selectedIconColor   = MedKitPrimary,
@@ -99,7 +88,6 @@ fun MainAppScaffold(
             }
         }
     ) { innerPadding ->
-
         NavHost(
             navController    = navController,
             startDestination = "home",
@@ -107,6 +95,7 @@ fun MainAppScaffold(
         ) {
             composable("home") {
                 HomeScreen(
+                    email           = email,
                     onCheckSymptoms = { navController.navigate(ROUTE_SYMPTOMS) },
                     onFirstAid      = { navController.navigate("firstaid") },
                     onHospitals     = { navController.navigate("hospitals") },
@@ -122,7 +111,7 @@ fun MainAppScaffold(
             composable("dial")      { SpeedDialScreen() }
             composable("lookup")    { LookupScreen() }
             composable("profile") {
-                ProfileScreen(email = email, onLogout = onLogout)
+                ProfileScreen(email = email, appPrefs = appPrefs, onLogout = onLogout)
             }
             composable(ROUTE_SYMPTOMS) {
                 CheckSymptomsScreen(
@@ -140,9 +129,9 @@ fun MainAppScaffold(
             ) { back ->
                 val moduleId = back.arguments?.getString("moduleId") ?: "bleeding"
                 FirstAidModuleScreen(
-                    moduleId   = moduleId,
-                    onBack     = { navController.popBackStack() },
-                    onDial     = { navController.navigate("dial") },
+                    moduleId    = moduleId,
+                    onBack      = { navController.popBackStack() },
+                    onDial      = { navController.navigate("dial") },
                     onHospitals = { navController.navigate("hospitals") }
                 )
             }

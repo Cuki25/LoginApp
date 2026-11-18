@@ -17,6 +17,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.loginapp.data.AppPreferences
 import com.example.loginapp.ui.components.MedKitButton
 import com.example.loginapp.ui.theme.*
 
@@ -24,26 +25,28 @@ import com.example.loginapp.ui.theme.*
 @Composable
 fun ProfileScreen(
     email:    String,
+    appPrefs: AppPreferences,
     onLogout: () -> Unit
 ) {
-    var fullName  by remember { mutableStateOf("") }
-    var bloodType by remember { mutableStateOf("Unknown") }
-    var allergies by remember { mutableStateOf("") }
+    var fullName   by remember { mutableStateOf("") }
+    var bloodType  by remember { mutableStateOf("Unknown") }
+    var allergies  by remember { mutableStateOf("") }
     var conditions by remember { mutableStateOf("") }
-    var darkMode  by remember { mutableStateOf(false) }
-    var readAloud by remember { mutableStateOf(false) }
+
+    val darkMode  by appPrefs.darkMode.collectAsState()
+    val readAloud by appPrefs.readAloud.collectAsState()
 
     val bloodOptions = listOf("Unknown","O+","O-","A+","A-","B+","B-","AB+","AB-")
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MedKitBackground)
+            .background(MaterialTheme.colorScheme.background)
     ) {
         // ── Header ────────────────────────────────────────────────────────────
         Column(
             modifier            = Modifier
-                .background(MedKitPrimary)
+                .background(MaterialTheme.colorScheme.primary)
                 .padding(horizontal = 20.dp, vertical = 20.dp)
                 .fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
@@ -56,12 +59,13 @@ fun ProfileScreen(
             ) {
                 Text(
                     text     = email.firstOrNull()?.uppercase() ?: "?",
-                    fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color.White
+                    fontSize = 22.sp, fontWeight = FontWeight.Bold,
+                    color    = MaterialTheme.colorScheme.onPrimary
                 )
             }
             Spacer(Modifier.height(8.dp))
-            Text(email, fontSize = 13.sp, color = Color.White.copy(alpha = 0.9f))
-            Text("STI College Global City", fontSize = 12.sp, color = Color.White.copy(alpha = 0.7f))
+            Text(email, fontSize = 13.sp, color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.9f))
+            Text("STI College Global City", fontSize = 12.sp, color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f))
         }
 
         Column(
@@ -86,11 +90,11 @@ fun ProfileScreen(
             OutlinedTextField(
                 value         = email,
                 onValueChange = {},
-                label         = { Text("School email") },
+                label         = { Text("Email address") },
                 readOnly      = true,
                 singleLine    = true,
                 supportingText = { Text("Your email is your login and can't be changed here.",
-                    fontSize = 11.sp, color = MedKitInkFaint) },
+                    fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) },
                 shape         = FieldShape,
                 colors        = profileFieldColors(),
                 modifier      = Modifier.fillMaxWidth()
@@ -103,12 +107,11 @@ fun ProfileScreen(
             // ── Medical information ───────────────────────────────────────────
             SectionLabel("Medical information")
             Text(
-                "Shown to clinic staff and responders if they open your profile during an emergency.",
-                fontSize = 12.sp, color = MedKitInkSoft, lineHeight = 18.sp
+                "Your emergency medical profile is saved to your account.",
+                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 18.sp
             )
             Spacer(Modifier.height(10.dp))
 
-            // Blood type dropdown
             var btExpanded by remember { mutableStateOf(false) }
             ExposedDropdownMenuBox(
                 expanded         = btExpanded,
@@ -128,7 +131,7 @@ fun ProfileScreen(
                 ExposedDropdownMenu(expanded = btExpanded, onDismissRequest = { btExpanded = false }) {
                     bloodOptions.forEach { opt ->
                         DropdownMenuItem(
-                            text    = { Text(opt, color = MedKitInkMain) },
+                            text    = { Text(opt, color = MaterialTheme.colorScheme.onSurface) },
                             onClick = { bloodType = opt; btExpanded = false }
                         )
                     }
@@ -162,19 +165,19 @@ fun ProfileScreen(
             SectionLabel("Preferences")
 
             PreferenceRow(
-                icon    = Icons.Filled.DarkMode,
-                title   = "Dark mode",
-                subtitle = "Easier on the eyes at night",
-                checked = darkMode,
-                onToggle = { darkMode = it }
+                icon     = Icons.Filled.DarkMode,
+                title    = "Dark mode",
+                subtitle = "Forest green dark theme",
+                checked  = darkMode,
+                onToggle = { appPrefs.setDarkMode(it) }
             )
             Spacer(Modifier.height(8.dp))
             PreferenceRow(
-                icon    = Icons.Filled.RecordVoiceOver,
-                title   = "Read steps aloud",
-                subtitle = "Text-to-speech on every first-aid step",
-                checked = readAloud,
-                onToggle = { readAloud = it }
+                icon     = Icons.Filled.RecordVoiceOver,
+                title    = "Read steps aloud",
+                subtitle = "Auto-advance TTS on first-aid steps",
+                checked  = readAloud,
+                onToggle = { appPrefs.setReadAloud(it) }
             )
 
             Spacer(Modifier.height(24.dp))
@@ -185,19 +188,20 @@ fun ProfileScreen(
             Button(
                 onClick  = onLogout,
                 shape    = FieldShape,
-                colors   = ButtonDefaults.buttonColors(containerColor = MedKitEmergencyRed),
+                colors   = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                 modifier = Modifier.fillMaxWidth().height(52.dp)
-            ) { Text("Log out", fontWeight = FontWeight.SemiBold, fontSize = 15.sp) }
+            ) { Text("Log out", fontWeight = FontWeight.SemiBold, fontSize = 15.sp,
+                color = MaterialTheme.colorScheme.onError) }
 
             Spacer(Modifier.height(10.dp))
 
             OutlinedButton(
                 onClick  = {},
                 shape    = FieldShape,
-                border   = androidx.compose.foundation.BorderStroke(1.dp, MedKitEmergencyRed),
+                border   = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.error),
                 modifier = Modifier.fillMaxWidth().height(52.dp)
             ) {
-                Text("Delete account", color = MedKitEmergencyRed,
+                Text("Delete account", color = MaterialTheme.colorScheme.error,
                     fontWeight = FontWeight.Medium, fontSize = 15.sp)
             }
 
@@ -209,7 +213,7 @@ fun ProfileScreen(
 @Composable
 private fun SectionLabel(text: String) {
     Text(text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
-        color = MedKitInkFaint, letterSpacing = 0.5.sp)
+        color = MaterialTheme.colorScheme.onSurfaceVariant, letterSpacing = 0.5.sp)
     Spacer(Modifier.height(8.dp))
 }
 
@@ -222,25 +226,26 @@ private fun PreferenceRow(
     onToggle: (Boolean) -> Unit
 ) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = MedKitSurface),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         shape  = RoundedCornerShape(10.dp)
     ) {
         Row(
             modifier          = Modifier.padding(14.dp).fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(icon, null, tint = MedKitPrimary, modifier = Modifier.size(20.dp))
+            Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(title, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = MedKitInkMain)
-                Text(subtitle, fontSize = 12.sp, color = MedKitInkFaint)
+                Text(title, fontSize = 14.sp, fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurface)
+                Text(subtitle, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Switch(
                 checked         = checked,
                 onCheckedChange = onToggle,
                 colors          = SwitchDefaults.colors(
-                    checkedThumbColor  = Color.White,
-                    checkedTrackColor  = MedKitPrimary
+                    checkedThumbColor  = MaterialTheme.colorScheme.onPrimary,
+                    checkedTrackColor  = MaterialTheme.colorScheme.primary
                 )
             )
         }
@@ -250,8 +255,8 @@ private fun PreferenceRow(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun profileFieldColors() = OutlinedTextFieldDefaults.colors(
-    unfocusedContainerColor = MedKitSurfaceSecondary,
-    focusedContainerColor   = MedKitSurfaceSecondary,
-    unfocusedBorderColor    = MedKitLine,
-    focusedBorderColor      = MedKitPrimary
+    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+    focusedContainerColor   = MaterialTheme.colorScheme.surfaceVariant,
+    unfocusedBorderColor    = MaterialTheme.colorScheme.outline,
+    focusedBorderColor      = MaterialTheme.colorScheme.primary
 )

@@ -2,38 +2,39 @@ package com.example.loginapp.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// ── MedKit Brand Colors ───────────────────────────────────────────────────────
+// ── MedKit Light Brand Colors ─────────────────────────────────────────────────
 
-/** Primary action color — dark emerald green. */
-val MedKitPrimary     = Color(0xFF0D5C4A)
-
-/** Darker shade for pressed / status bar. */
+/** Primary action — dark emerald green. */
+val MedKitPrimary     = Color(0xFF15573E)
 val MedKitPrimaryDark = Color(0xFF093F33)
-
-/** Very light tint for chips, selected states, pill badges. */
 val MedKitPrimaryTint = Color(0xFFE1EFEA)
 
-// ── Backgrounds & Surfaces ────────────────────────────────────────────────────
+// Light backgrounds & surfaces
+val MedKitBackground       = Color(0xFFF3F6F4)
+val MedKitSurface          = Color(0xFFFFFFFF)
+val MedKitSurfaceSecondary = Color(0xFFF4F8F6)
 
-val MedKitBackground       = Color(0xFFEEF3F1)   // app scaffold background
-val MedKitSurface          = Color(0xFFFFFFFF)   // card / dialog surface
-val MedKitSurfaceSecondary = Color(0xFFF4F8F6)   // text field fill
+// Light ink (text)
+val MedKitInkMain  = Color(0xFF11221B)
+val MedKitInkSoft  = Color(0xFF52665E)
+val MedKitInkFaint = Color(0xFF8B978F)
 
-// ── Ink (text) ────────────────────────────────────────────────────────────────
+// Status / semantic
+val MedKitEmergencyRed = Color(0xFFC1372E)
+val MedKitLine         = Color(0xFFDCE5E0)
 
-val MedKitInkMain  = Color(0xFF16231F)   // primary body text
-val MedKitInkSoft  = Color(0xFF526158)   // secondary / label text
-val MedKitInkFaint = Color(0xFF8B978F)   // placeholder / hint text
+// ── MedKit Dark Palette (Forest Green) ───────────────────────────────────────
 
-// ── Status & Semantic ─────────────────────────────────────────────────────────
+val MedKitDarkBackground       = Color(0xFF0E1D18)
+val MedKitDarkSurface          = Color(0xFF152822)
+val MedKitDarkSurfaceSecondary = Color(0xFF1C3028)
+val MedKitDarkPrimary          = Color(0xFF43B88C)
+val MedKitDarkOnPrimary        = Color(0xFF0B1A15)
+val MedKitDarkLine             = Color(0xFF243F36)
 
-val MedKitEmergencyRed = Color(0xFFC1372E)   // error, urgent alerts
-val MedKitLine         = Color(0xFFDCE5E0)   // borders and dividers
+val MedKitDarkInkMain  = Color(0xFFF2F7F4)
+val MedKitDarkInkSoft  = Color(0xFFA7BEB5)
+val MedKitDarkInkFaint = Color(0xFF6B8278)
 
-// ── Corner Radii (shared constants via Dp) ────────────────────────────────────
-// Usage:
-//   RoundedCornerShape(FieldRadius)   → text fields, buttons
-//   RoundedCornerShape(CardRadius)    → cards
-//   RoundedCornerShape(CrestRadius)   → brand crest
-//
-// (These are kept here alongside colors for a single design-token import.)
+// Coral red stays the same in dark mode — it's already high-contrast.
+val MedKitDarkEmergencyRed = Color(0xFFE56B61)

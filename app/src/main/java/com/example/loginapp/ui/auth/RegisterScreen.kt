@@ -1,81 +1,50 @@
 package com.example.loginapp.ui.auth
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Badge
-import androidx.compose.material.icons.filled.Email
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.input.*
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.loginapp.ui.components.BrandMark
 import com.example.loginapp.ui.components.MedKitButton
 import com.example.loginapp.ui.components.MedKitTextField
-import com.example.loginapp.ui.theme.MedKitBackground
-import com.example.loginapp.ui.theme.MedKitEmergencyRed
-import com.example.loginapp.ui.theme.MedKitInkFaint
-import com.example.loginapp.ui.theme.MedKitInkMain
-import com.example.loginapp.ui.theme.MedKitInkSoft
+import com.example.loginapp.ui.theme.*
 
-/** STI student number format: 02000 followed by exactly 6 digits. */
 private val STUDENT_NUMBER_RE = Regex("^02000\\d{6}$")
-
-/** Institution is fixed for this deployment. */
-private const val INSTITUTION = "STI College Global City"
 
 @Composable
 fun RegisterScreen(
     viewModel:      AuthViewModel,
-    /**
-     * Called when the OTP was successfully dispatched.
-     * Carries email, password, and studentNumber to the OTP screen.
-     */
     onOtpSent:      (email: String, password: String, studentNumber: String) -> Unit,
     onNavigateBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    var fullName        by remember { mutableStateOf("") }
+    var firstName       by remember { mutableStateOf("") }
+    var middleName      by remember { mutableStateOf("") }
+    var middleNA        by remember { mutableStateOf(false) }
+    var lastName        by remember { mutableStateOf("") }
     var studentNumber   by remember { mutableStateOf("") }
     var email           by remember { mutableStateOf("") }
     var password        by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
 
-    var fullNameError     by remember { mutableStateOf<String?>(null) }
+    var firstNameError    by remember { mutableStateOf<String?>(null) }
+    var lastNameError     by remember { mutableStateOf<String?>(null) }
+    var middleNameError   by remember { mutableStateOf<String?>(null) }
     var studentNumError   by remember { mutableStateOf<String?>(null) }
     var emailError        by remember { mutableStateOf<String?>(null) }
     var passwordError     by remember { mutableStateOf<String?>(null) }
@@ -84,52 +53,52 @@ fun RegisterScreen(
     LaunchedEffect(uiState.otpSent) {
         if (uiState.otpSent) {
             viewModel.clearOtpSent()
+            val fullName = buildString {
+                append(firstName.trim())
+                if (!middleNA && middleName.isNotBlank()) append(" ${middleName.trim()}")
+                append(" ${lastName.trim()}")
+            }
             onOtpSent(email.trim().lowercase(), password, studentNumber.trim())
         }
     }
 
     fun validate(): Boolean {
-        fullNameError = if (fullName.isBlank()) "Full name is required." else null
+        firstNameError  = if (firstName.isBlank()) "First name is required." else null
+        lastNameError   = if (lastName.isBlank()) "Last name is required." else null
+        middleNameError = if (!middleNA && middleName.isBlank())
+            "Enter a middle name or check N/A." else null
 
         studentNumError = when {
-            studentNumber.isBlank()                       -> "Student number is required."
+            studentNumber.isBlank() -> "Student number is required."
             !STUDENT_NUMBER_RE.matches(studentNumber.trim()) ->
                 "Must be 11 digits starting with 02000 (e.g. 02000123456)."
-            else                                          -> null
+            else -> null
         }
-
-        emailError = if (email.isBlank() || !email.contains('@'))
+        emailError    = if (email.isBlank() || !email.contains('@'))
             "Enter a valid email address." else null
-
-        passwordError = when {
-            password.length < 8 -> "Password must be at least 8 characters."
-            else                 -> null
-        }
-        confirmError = when {
+        passwordError = if (password.length < 8)
+            "Password must be at least 8 characters." else null
+        confirmError  = when {
             confirmPassword.isBlank()   -> "Please confirm your password."
             confirmPassword != password -> "Passwords do not match."
             else                        -> null
         }
-        return listOf(fullNameError, studentNumError, emailError, passwordError, confirmError)
-            .all { it == null }
+        return listOf(firstNameError, lastNameError, middleNameError,
+            studentNumError, emailError, passwordError, confirmError).all { it == null }
     }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MedKitBackground)
+            .background(MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState())
             .statusBarsPadding()
             .padding(horizontal = 24.dp, vertical = 40.dp)
     ) {
-        // ── Back arrow ────────────────────────────────────────────────────────
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onNavigateBack, modifier = Modifier.size(40.dp)) {
-                Icon(
-                    imageVector        = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back",
-                    tint               = MedKitInkMain
-                )
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back",
+                    tint = MaterialTheme.colorScheme.onBackground)
             }
         }
 
@@ -137,119 +106,138 @@ fun RegisterScreen(
         BrandMark()
         Spacer(Modifier.height(28.dp))
 
-        Text("Create your account", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = MedKitInkMain)
+        Text("Create your account", fontSize = 26.sp, fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onBackground)
         Spacer(Modifier.height(6.dp))
-        Text(
-            "Set up a MedKit profile so responders and clinic staff know who they're helping.",
-            style = MaterialTheme.typography.bodyMedium, color = MedKitInkSoft
-        )
+        Text("Set up a MedKit profile so responders and clinic staff know who they're helping.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
 
         Spacer(Modifier.height(28.dp))
 
-        // ── Full Name ──────────────────────────────────────────────────────────
+        // ── First Name ────────────────────────────────────────────────────────
         MedKitTextField(
-            value         = fullName,
-            onValueChange = { fullName = it; fullNameError = null; viewModel.clearError() },
-            label         = "Full Name",
-            leadingIcon   = { Icon(Icons.Filled.Person, null, tint = MedKitInkFaint) },
+            value           = firstName,
+            onValueChange   = { firstName = it; firstNameError = null; viewModel.clearError() },
+            label           = "First Name",
+            leadingIcon     = { Icon(Icons.Filled.Person, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
-            errorMessage  = fullNameError,
-            modifier      = Modifier.fillMaxWidth()
+            errorMessage    = firstNameError,
+            modifier        = Modifier.fillMaxWidth()
         )
 
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(10.dp))
+
+        // ── Middle Name ───────────────────────────────────────────────────────
+        MedKitTextField(
+            value           = if (middleNA) "" else middleName,
+            onValueChange   = { middleName = it; middleNameError = null; viewModel.clearError() },
+            label           = "Middle Name",
+            leadingIcon     = { Icon(Icons.Filled.Person, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+            enabled         = !middleNA,
+            errorMessage    = middleNameError,
+            modifier        = Modifier.fillMaxWidth()
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = middleNA, onCheckedChange = { middleNA = it; middleNameError = null })
+            Text("No middle name (N/A)", fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+
+        Spacer(Modifier.height(4.dp))
+
+        // ── Last Name ─────────────────────────────────────────────────────────
+        MedKitTextField(
+            value           = lastName,
+            onValueChange   = { lastName = it; lastNameError = null; viewModel.clearError() },
+            label           = "Last Name",
+            leadingIcon     = { Icon(Icons.Filled.Person, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+            errorMessage    = lastNameError,
+            modifier        = Modifier.fillMaxWidth()
+        )
+
+        Spacer(Modifier.height(10.dp))
 
         // ── Student Number ────────────────────────────────────────────────────
         MedKitTextField(
             value         = studentNumber,
             onValueChange = { v ->
                 if (v.length <= 11 && v.all { it.isDigit() }) {
-                    studentNumber = v
-                    studentNumError = null
-                    viewModel.clearError()
+                    studentNumber = v; studentNumError = null; viewModel.clearError()
                 }
             },
             label           = "Student Number",
             placeholder     = "02000XXXXXX",
-            leadingIcon     = { Icon(Icons.Filled.Badge, null, tint = MedKitInkFaint) },
+            leadingIcon     = { Icon(Icons.Filled.Badge, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             errorMessage    = studentNumError,
             modifier        = Modifier.fillMaxWidth()
         )
 
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(10.dp))
 
-        // ── Email Address ─────────────────────────────────────────────────────
+        // ── Email ─────────────────────────────────────────────────────────────
         MedKitTextField(
-            value         = email,
-            onValueChange = { email = it; emailError = null; viewModel.clearError() },
-            label         = "Email Address",
-            leadingIcon   = { Icon(Icons.Filled.Email, null, tint = MedKitInkFaint) },
+            value           = email,
+            onValueChange   = { email = it; emailError = null; viewModel.clearError() },
+            label           = "Email Address",
+            leadingIcon     = { Icon(Icons.Filled.Email, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-            errorMessage  = emailError,
-            modifier      = Modifier.fillMaxWidth()
+            errorMessage    = emailError,
+            modifier        = Modifier.fillMaxWidth()
         )
 
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(10.dp))
 
         // ── Password ──────────────────────────────────────────────────────────
         MedKitTextField(
-            value         = password,
-            onValueChange = { password = it; passwordError = null; viewModel.clearError() },
-            label         = "Password",
-            leadingIcon   = { Icon(Icons.Filled.Lock, null, tint = MedKitInkFaint) },
-            trailingIcon  = {
+            value           = password,
+            onValueChange   = { password = it; passwordError = null; viewModel.clearError() },
+            label           = "Password",
+            leadingIcon     = { Icon(Icons.Filled.Lock, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+            trailingIcon    = {
                 val icon = if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff
                 IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                    Icon(icon, null, tint = MedKitInkFaint)
+                    Icon(icon, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             },
             visualTransformation = if (passwordVisible) VisualTransformation.None
                                    else PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-            errorMessage  = passwordError,
-            modifier      = Modifier.fillMaxWidth()
+            errorMessage    = passwordError,
+            modifier        = Modifier.fillMaxWidth()
         )
 
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(10.dp))
 
         // ── Confirm Password ──────────────────────────────────────────────────
         MedKitTextField(
-            value         = confirmPassword,
-            onValueChange = { confirmPassword = it; confirmError = null },
-            label         = "Confirm Password",
-            leadingIcon   = { Icon(Icons.Filled.Lock, null, tint = MedKitInkFaint) },
+            value           = confirmPassword,
+            onValueChange   = { confirmPassword = it; confirmError = null },
+            label           = "Retype Password",
+            leadingIcon     = { Icon(Icons.Filled.Lock, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
             visualTransformation = if (passwordVisible) VisualTransformation.None
                                    else PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-            errorMessage  = confirmError,
-            modifier      = Modifier.fillMaxWidth()
+            errorMessage    = confirmError,
+            modifier        = Modifier.fillMaxWidth()
         )
 
-        // ── Server-level error ────────────────────────────────────────────────
         uiState.errorMessage?.let { msg ->
             Spacer(Modifier.height(8.dp))
-            Text(
-                text      = msg,
-                color     = MedKitEmergencyRed,
-                fontSize  = 13.sp,
-                textAlign = TextAlign.Center,
-                modifier  = Modifier.fillMaxWidth()
-            )
+            Text(msg, color = MaterialTheme.colorScheme.error, fontSize = 13.sp,
+                textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
         }
 
         Spacer(Modifier.height(24.dp))
 
-        // ── Send Verification Code ────────────────────────────────────────────
         MedKitButton(
             text        = "Send Verification Code",
             loadingText = "Sending code…",
             loading     = uiState.isLoading,
-            onClick     = {
-                if (validate()) {
-                    viewModel.sendOtp(email.trim().lowercase())
-                }
-            }
+            onClick     = { if (validate()) viewModel.sendOtp(email.trim().lowercase()) }
         )
 
         Spacer(Modifier.height(28.dp))
