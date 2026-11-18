@@ -23,19 +23,29 @@ class AuthRepository(
 
     // ── Email / password ──────────────────────────────────────────────────────
 
-    suspend fun register(email: String, password: String): AuthResult<AuthSuccessData> =
-        safeAuthCall { api.register(RegisterRequest(email.trim().lowercase(), password)) }
+    suspend fun register(
+        email:         String,
+        password:      String,
+        studentNumber: String
+    ): AuthResult<AuthSuccessData> =
+        safeAuthCall {
+            api.register(
+                RegisterRequest(
+                    email         = email.trim().lowercase(),
+                    password      = password,
+                    studentNumber = studentNumber.trim()
+                )
+            )
+        }
 
     suspend fun login(email: String, password: String): AuthResult<AuthSuccessData> =
         safeAuthCall { api.login(LoginRequest(email.trim().lowercase(), password)) }
 
     // ── OTP ───────────────────────────────────────────────────────────────────
 
-    /** Tells the backend to generate and email a 6-digit OTP to [email]. */
     suspend fun sendOtp(email: String): AuthResult<String> =
         safeMessageCall { api.sendOtp(SendOtpRequest(email.trim().lowercase())) }
 
-    /** Validates [code] against the backend for [email]. */
     suspend fun verifyOtp(email: String, code: String): AuthResult<String> =
         safeMessageCall { api.verifyOtp(VerifyOtpRequest(email.trim().lowercase(), code.trim())) }
 
@@ -50,10 +60,11 @@ class AuthRepository(
             if (body != null) {
                 AuthResult.Success(
                     AuthSuccessData(
-                        token  = body.token,
-                        email  = body.email,
-                        userId = body.userId,
-                        role   = body.role ?: "user"
+                        token         = body.token,
+                        email         = body.email,
+                        userId        = body.userId,
+                        role          = body.role ?: "user",
+                        studentNumber = body.studentNumber
                     )
                 )
             } else AuthResult.Error("The server returned an empty response.")
@@ -61,11 +72,11 @@ class AuthRepository(
             AuthResult.Error(parseError(response.errorBody()?.string(), response.code()))
         }
     } catch (e: java.net.ConnectException) {
-        AuthResult.Error("Cannot reach the server. Make sure the Ktor backend is running on port 8080.")
+        AuthResult.Error("Cannot reach the server. Check your internet connection.")
     } catch (e: java.net.SocketTimeoutException) {
-        AuthResult.Error("The request timed out. Check your network connection.")
+        AuthResult.Error("The request timed out. The server may be starting up — please try again.")
     } catch (e: Exception) {
-        AuthResult.Error(e.message ?: "An unexpected error occurred.")
+        AuthResult.Error(e.message?.takeIf { it.isNotBlank() } ?: "An unexpected error occurred.")
     }
 
     private suspend fun safeMessageCall(
@@ -73,27 +84,34 @@ class AuthRepository(
     ): AuthResult<String> = try {
         val response = call()
         if (response.isSuccessful) {
-            val body = response.body()
-            AuthResult.Success(body?.message ?: "Success.")
+            AuthResult.Success(response.body()?.message ?: "Success.")
         } else {
             AuthResult.Error(parseError(response.errorBody()?.string(), response.code()))
         }
     } catch (e: java.net.ConnectException) {
-        AuthResult.Error("Cannot reach the server. Make sure the Ktor backend is running on port 8080.")
+        AuthResult.Error("Cannot reach the server. Check your internet connection.")
     } catch (e: java.net.SocketTimeoutException) {
-        AuthResult.Error("The request timed out. Check your network connection.")
+        AuthResult.Error("The request timed out. The server may be starting up — please try again.")
     } catch (e: Exception) {
-        AuthResult.Error(e.message ?: "An unexpected error occurred.")
+        AuthResult.Error(e.message?.takeIf { it.isNotBlank() } ?: "An unexpected error occurred.")
     }
 
-    private fun parseError(json: String?, httpCode: Int): String =
+    /**
+     * Tries to parse the backend JSON error body, checking both "error" and
+     * "message" fields (the backend uses "error" for failures and "message"
+     * for successes). Falls back to a generic HTTP status description.
+     */
+    private fun parseError(json: String?, httpCode: Int): String {
         if (!json.isNullOrBlank()) {
             runCatching {
-                gson.fromJson(json, ErrorResponse::class.java).error
-            }.getOrDefault("Request failed (HTTP $httpCode).")
-        } else {
-            "Request failed (HTTP $httpCode)."
+                val err = gson.fromJson(json, ErrorResponse::class.java)
+                val text = err.error?.takeIf { it.isNotBlank() }
+                    ?: err.message?.takeIf { it.isNotBlank() }
+                if (!text.isNullOrBlank()) return text
+            }
         }
+        return "Request failed (HTTP $httpCode)."
+    }
 }
 
 // ── Result types ──────────────────────────────────────────────────────────────
@@ -104,8 +122,9 @@ sealed interface AuthResult<out T> {
 }
 
 data class AuthSuccessData(
-    val token:  String,
-    val email:  String,
-    val userId: String,
-    val role:   String   // "user" | "admin" | "super_admin"
+    val token:         String,
+    val email:         String,
+    val userId:        String,
+    val role:          String,
+    val studentNumber: String? = null
 )

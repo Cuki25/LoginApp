@@ -12,8 +12,9 @@ package com.example.loginapp.data
 object SignUpDraft {
 
     // ── Step 1 — Auth (email + password, OTP) ─────────────────────────────────
-    var email:    String = ""   // captured on Step 1, sent to /auth/register
-    var password: String = ""   // captured on Step 2 (Basic Info)
+    var email:         String = ""
+    var password:      String = ""
+    var studentNumber: String = ""   // validated 02000XXXXXX format
 
     // Set by AppNavigation after /auth/register succeeds — used to save the session.
     var registeredToken:  String = ""
@@ -46,6 +47,7 @@ object SignUpDraft {
     fun clear() {
         email             = ""
         password          = ""
+        studentNumber     = ""
         registeredToken   = ""
         registeredUserId  = ""
         campusId          = ""

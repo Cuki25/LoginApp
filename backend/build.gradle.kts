@@ -49,11 +49,8 @@ dependencies {
     // .env file loading for local secrets
     implementation("io.github.cdimascio:dotenv-kotlin:6.4.1")
 
-    // ── Email (Jakarta Mail / Angus Mail) ─────────────────────────────────────
-    // Jakarta Mail API (spec)
-    implementation("jakarta.mail:jakarta.mail-api:2.1.3")
-    // Angus Mail — the reference implementation that ships the actual SMTP client
-    implementation("org.eclipse.angus:angus-mail:2.0.3")
+    // JSON serialisation — used by EmailService to build the Resend payload
+    implementation("com.google.code.gson:gson:2.10.1")
 
     // Logging
     implementation("ch.qos.logback:logback-classic:1.4.14")

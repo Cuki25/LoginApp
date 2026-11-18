@@ -4,29 +4,28 @@ import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
+import java.util.concurrent.TimeUnit
 
 /**
- * Singleton Retrofit instance.
+ * Singleton Retrofit instance pointed at the Render-hosted Ktor backend.
  *
- * BASE_URL points to the Ktor server:
- *  - 10.0.2.2 is the Android emulator's alias for localhost on your dev machine.
- *  - Change to your LAN IP (e.g. 192.168.1.x) when testing on a physical device.
- *  - Change to your production domain before release.
+ * The 60-second timeouts give Render's free tier enough time to wake from
+ * its cold-sleep before the request is abandoned.
  */
 object RetrofitClient {
 
-    // ── Change this when moving to production ────────────────────────────────
-    // localhost:8080 is reached on a physical device via:
-    //   adb reverse tcp:8080 tcp:8080
-    private const val BASE_URL = "http://localhost:8080/"
+    private const val BASE_URL = "https://medkit-backend.onrender.com/"
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
-        // BODY logs full request/response in Logcat — useful for development.
+        // BODY logs full request/response in Logcat — useful during development.
         level = HttpLoggingInterceptor.Level.BODY
     }
 
     private val okHttpClient = OkHttpClient.Builder()
         .addInterceptor(loggingInterceptor)
+        .connectTimeout(60, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(60, TimeUnit.SECONDS)
         .build()
 
     private val retrofit: Retrofit = Retrofit.Builder()

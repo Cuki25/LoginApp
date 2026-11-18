@@ -10,8 +10,9 @@ data class LoginRequest(
 )
 
 data class RegisterRequest(
-    @SerializedName("email")    val email:    String,
-    @SerializedName("password") val password: String
+    @SerializedName("email")         val email:         String,
+    @SerializedName("password")      val password:      String,
+    @SerializedName("studentNumber") val studentNumber: String
 )
 
 data class SendOtpRequest(
@@ -26,11 +27,11 @@ data class VerifyOtpRequest(
 // ── Responses ─────────────────────────────────────────────────────────────────
 
 data class AuthResponse(
-    @SerializedName("token")  val token:  String,
-    @SerializedName("email")  val email:  String,
-    @SerializedName("userId") val userId: String,
-    /** Backend may include role in future; defaults to "user" if absent. */
-    @SerializedName("role")   val role:   String? = null
+    @SerializedName("token")         val token:         String,
+    @SerializedName("email")         val email:         String,
+    @SerializedName("userId")        val userId:        String,
+    @SerializedName("role")          val role:          String? = null,
+    @SerializedName("studentNumber") val studentNumber: String? = null
 )
 
 data class MessageResponse(
@@ -38,5 +39,6 @@ data class MessageResponse(
 )
 
 data class ErrorResponse(
-    @SerializedName("error") val error: String
+    @SerializedName("error")   val error:   String? = null,
+    @SerializedName("message") val message: String? = null
 )

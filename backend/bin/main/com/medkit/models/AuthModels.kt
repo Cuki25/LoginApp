@@ -6,8 +6,9 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class RegisterRequest(
-    val email:    String,
-    val password: String
+    val email:         String,
+    val password:      String,
+    val studentNumber: String = ""
 )
 
 @Serializable
@@ -31,9 +32,11 @@ data class VerifyOtpRequest(
 
 @Serializable
 data class AuthResponse(
-    val token: String,
-    val email: String,
-    val userId: String
+    val token:         String,
+    val email:         String,
+    val userId:        String,
+    val role:          String  = "user",
+    val studentNumber: String? = null
 )
 
 @Serializable

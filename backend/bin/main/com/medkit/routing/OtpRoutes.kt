@@ -1,7 +1,6 @@
 package com.medkit.routing
 
 import com.medkit.auth.OtpService
-import com.medkit.email.EmailException
 import com.medkit.email.EmailService
 import com.medkit.models.ErrorResponse
 import com.medkit.models.MessageResponse
@@ -25,12 +24,10 @@ fun Route.otpRoutes() {
         // Body:  { "email": "..." }
         // 200:   { "message": "Verification code sent to ..." }
         // 400:   { "error": "..." }   (missing / invalid email)
-        // 502:   { "error": "..." }   (SMTP failure — SMTP not configured, etc.)
         //
-        // Rate-limiting: the table stores every OTP insert, but only the
-        // most recent unexpired row is checked on verify. Repeated calls
-        // generate a new code, effectively invalidating the previous one.
-        // For production, add an IP- or email-based rate limiter here.
+        // The OTP code is always printed to stdout so it is visible in Render logs.
+        // EmailService.sendOtp never throws — email failures are logged but do not
+        // cause a 502, so development works even before Resend is configured.
         post("/send-otp") {
             val body  = call.receive<SendOtpRequest>()
             val email = body.email.trim().lowercase()
@@ -43,27 +40,18 @@ fun Route.otpRoutes() {
                 return@post
             }
 
-            // Generate the code and store its hash in the DB.
+            // Generate the code, hash it, and store in DB.
             val code = OtpService.generate(email)
 
-            // Send the email — catch SMTP errors so the HTTP layer stays clean.
-            try {
-                EmailService.sendOtp(toEmail = email, code = code)
-            } catch (e: EmailException) {
-                log.error("SMTP failure for {}: {}", email, e.message)
-                call.respond(
-                    HttpStatusCode.BadGateway,
-                    ErrorResponse(
-                        "Could not send the verification email. " +
-                        "Check that SMTP_EMAIL and SMTP_PASSWORD are set in .env."
-                    )
-                )
-                return@post
-            }
+            // Dispatch via Resend HTTPS API (non-throwing — logs on failure).
+            EmailService.sendOtp(toEmail = email, code = code)
 
             call.respond(
                 HttpStatusCode.OK,
-                MessageResponse("Verification code sent to $email. It expires in ${com.medkit.config.AppConfig.otpExpiryMinutes} minutes.")
+                MessageResponse(
+                    "Verification code sent to $email. " +
+                    "It expires in ${com.medkit.config.AppConfig.otpExpiryMinutes} minutes."
+                )
             )
         }
 
@@ -95,35 +83,24 @@ fun Route.otpRoutes() {
 
             when (OtpService.verify(email, code)) {
 
-                OtpService.VerifyResult.Success -> {
-                    call.respond(
-                        HttpStatusCode.OK,
-                        MessageResponse("Email verified. You can now complete your registration.")
-                    )
-                }
+                OtpService.VerifyResult.Success -> call.respond(
+                    HttpStatusCode.OK,
+                    MessageResponse("Email verified. You can now complete your registration.")
+                )
 
-                OtpService.VerifyResult.AlreadyVerified -> {
-                    // Idempotent — treat as success so the client can retry safely.
-                    call.respond(
-                        HttpStatusCode.OK,
-                        MessageResponse("Email already verified.")
-                    )
-                }
+                OtpService.VerifyResult.AlreadyVerified -> call.respond(
+                    HttpStatusCode.OK,
+                    MessageResponse("Email already verified.")
+                )
 
-                OtpService.VerifyResult.InvalidOrExpired -> {
-                    // 422 Unprocessable — the request was well-formed but the code
-                    // didn't pass validation. The Android client should show this
-                    // message and let the user request a new code.
-                    call.respond(
-                        HttpStatusCode.UnprocessableEntity,
-                        ErrorResponse("The code is incorrect or has expired. Please request a new one.")
-                    )
-                }
+                OtpService.VerifyResult.InvalidOrExpired -> call.respond(
+                    HttpStatusCode.UnprocessableEntity,
+                    ErrorResponse("The code is incorrect or has expired. Please request a new one.")
+                )
             }
         }
     }
 }
 
-// ── Reused from AuthRoutes — keep in sync or extract to a shared util ─────────
 private fun String.isValidEmail(): Boolean =
     isNotBlank() && contains('@') && substringAfter('@').contains('.')

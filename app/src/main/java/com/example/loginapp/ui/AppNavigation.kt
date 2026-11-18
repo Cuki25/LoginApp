@@ -105,8 +105,8 @@ fun AppNavigation(
                 onNavigateToRegister = {
                     navController.navigate(Routes.REGISTER)
                 },
-                onOAuthGoogle    = { openCustomTab(context, "http://10.0.2.2:8080/auth/google") },
-                onOAuthMicrosoft = { openCustomTab(context, "http://10.0.2.2:8080/auth/microsoft") }
+                onOAuthGoogle    = { openCustomTab(context, "https://medkit-backend.onrender.com/auth/google") },
+                onOAuthMicrosoft = { openCustomTab(context, "https://medkit-backend.onrender.com/auth/microsoft") }
             )
         }
 
@@ -114,10 +114,10 @@ fun AppNavigation(
         composable(Routes.REGISTER) {
             RegisterScreen(
                 viewModel      = authViewModel,
-                onOtpSent      = { email, password ->
-                    // Stash password in-memory so OTP screen can call completeRegistration.
-                    SignUpDraft.email    = email
-                    SignUpDraft.password = password
+                onOtpSent      = { email, password, studentNumber ->
+                    SignUpDraft.email         = email
+                    SignUpDraft.password      = password
+                    SignUpDraft.studentNumber = studentNumber
                     navController.navigate(Routes.otpVerify(email))
                 },
                 onNavigateBack = { navController.popBackStack() }
@@ -129,14 +129,16 @@ fun AppNavigation(
             route     = Routes.OTP_VERIFY,
             arguments = listOf(navArgument("email") { type = NavType.StringType })
         ) { backStackEntry ->
-            val email    = Uri.decode(backStackEntry.arguments?.getString("email").orEmpty())
-            val password = SignUpDraft.password   // retrieved from in-memory draft
+            val email         = Uri.decode(backStackEntry.arguments?.getString("email").orEmpty())
+            val password      = SignUpDraft.password
+            val studentNumber = SignUpDraft.studentNumber
 
             OtpVerificationScreen(
-                viewModel  = authViewModel,
-                email      = email,
-                password   = password,
-                onVerified = { data ->
+                viewModel     = authViewModel,
+                email         = email,
+                password      = password,
+                studentNumber = studentNumber,
+                onVerified    = { data ->
                     session.saveSession(
                         token    = data.token,
                         email    = data.email,

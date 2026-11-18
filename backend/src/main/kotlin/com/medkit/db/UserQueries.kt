@@ -6,30 +6,15 @@ import java.util.UUID
 /**
  * Mirrors the [users] PostgreSQL table.
  * [passwordHash] is nullable — OAuth-only accounts never have a password.
- *
- * PostgreSQL schema (run once against your Aiven DB):
- *
- *   CREATE TABLE users (
- *       id                  UUID        NOT NULL DEFAULT gen_random_uuid(),
- *       email               TEXT        NOT NULL,
- *       password_hash       TEXT,
- *       auth_provider       TEXT        NOT NULL DEFAULT 'local',
- *       provider_subject_id TEXT,
- *       created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
- *       CONSTRAINT pk_users            PRIMARY KEY (id),
- *       CONSTRAINT uq_users_email      UNIQUE (email),
- *       CONSTRAINT uq_users_provider   UNIQUE (auth_provider, provider_subject_id)
- *   );
- *   CREATE INDEX ix_users_email    ON users(email);
- *   CREATE INDEX ix_users_provider ON users(auth_provider, provider_subject_id)
- *       WHERE provider_subject_id IS NOT NULL;
+ * [studentNumber] follows the STI format: ^02000\d{6}$ (11 chars).
  */
 data class UserRecord(
     val id:                UUID,
     val email:             String,
     val passwordHash:      String?,
     val authProvider:      String,
-    val providerSubjectId: String?
+    val providerSubjectId: String?,
+    val studentNumber:     String?  = null
 )
 
 object UserQueries {
@@ -38,54 +23,60 @@ object UserQueries {
 
     fun findByEmail(email: String): UserRecord? = Database.connect { conn ->
         conn.prepareStatement(
-            "SELECT id, email, password_hash, auth_provider, provider_subject_id " +
+            "SELECT id, email, password_hash, auth_provider, provider_subject_id, student_number " +
             "FROM users WHERE email = ?"
         ).use { stmt ->
             stmt.setString(1, email.trim().lowercase())
-            stmt.executeQuery().use { rs ->
-                if (rs.next()) rs.toUserRecord() else null
-            }
+            stmt.executeQuery().use { rs -> if (rs.next()) rs.toUserRecord() else null }
+        }
+    }
+
+    fun findByStudentNumber(studentNumber: String): UserRecord? = Database.connect { conn ->
+        conn.prepareStatement(
+            "SELECT id, email, password_hash, auth_provider, provider_subject_id, student_number " +
+            "FROM users WHERE student_number = ?"
+        ).use { stmt ->
+            stmt.setString(1, studentNumber)
+            stmt.executeQuery().use { rs -> if (rs.next()) rs.toUserRecord() else null }
         }
     }
 
     fun findByProvider(provider: String, subjectId: String): UserRecord? =
         Database.connect { conn ->
             conn.prepareStatement(
-                "SELECT id, email, password_hash, auth_provider, provider_subject_id " +
+                "SELECT id, email, password_hash, auth_provider, provider_subject_id, student_number " +
                 "FROM users WHERE auth_provider = ? AND provider_subject_id = ?"
             ).use { stmt ->
                 stmt.setString(1, provider)
                 stmt.setString(2, subjectId)
-                stmt.executeQuery().use { rs ->
-                    if (rs.next()) rs.toUserRecord() else null
-                }
+                stmt.executeQuery().use { rs -> if (rs.next()) rs.toUserRecord() else null }
             }
         }
 
     fun findById(id: UUID): UserRecord? = Database.connect { conn ->
         conn.prepareStatement(
-            "SELECT id, email, password_hash, auth_provider, provider_subject_id " +
+            "SELECT id, email, password_hash, auth_provider, provider_subject_id, student_number " +
             "FROM users WHERE id = ?"
         ).use { stmt ->
-            stmt.setObject(1, id)   // PostgreSQL UUID type — use setObject, not setString
-            stmt.executeQuery().use { rs ->
-                if (rs.next()) rs.toUserRecord() else null
-            }
+            stmt.setObject(1, id)
+            stmt.executeQuery().use { rs -> if (rs.next()) rs.toUserRecord() else null }
         }
     }
 
     // ── Writes ────────────────────────────────────────────────────────────────
 
-    fun insertLocal(email: String, passwordHash: String): UUID {
+    fun insertLocal(email: String, passwordHash: String, studentNumber: String? = null): UUID {
         val id = UUID.randomUUID()
         Database.connect { conn ->
             conn.prepareStatement(
-                "INSERT INTO users (id, email, password_hash, auth_provider) " +
-                "VALUES (?, ?, ?, 'local')"
+                "INSERT INTO users (id, email, password_hash, auth_provider, student_number) " +
+                "VALUES (?, ?, ?, 'local', ?)"
             ).use { stmt ->
                 stmt.setObject(1, id)
                 stmt.setString(2, email.trim().lowercase())
                 stmt.setString(3, passwordHash)
+                if (studentNumber.isNullOrBlank()) stmt.setNull(4, java.sql.Types.VARCHAR)
+                else stmt.setString(4, studentNumber)
                 stmt.executeUpdate()
             }
         }
@@ -116,6 +107,7 @@ object UserQueries {
         email             = getString("email"),
         passwordHash      = getString("password_hash"),
         authProvider      = getString("auth_provider"),
-        providerSubjectId = getString("provider_subject_id")
+        providerSubjectId = getString("provider_subject_id"),
+        studentNumber     = getString("student_number")
     )
 }

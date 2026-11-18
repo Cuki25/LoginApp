@@ -16,22 +16,12 @@ import kotlinx.coroutines.launch
 data class AuthUiState(
     val isLoading:    Boolean = false,
     val errorMessage: String? = null,
-    /** Set when a login/register call succeeds — cleared on navigation. */
     val authSuccess:  AuthSuccessData? = null,
-    /** Set when send-otp succeeds — signals the UI to advance to the OTP screen. */
     val otpSent:      Boolean = false,
-    /** Set when verify-otp succeeds — signals the UI to call /auth/register. */
     val otpVerified:  Boolean = false,
-    /** The email being registered (carried from RegisterScreen to OtpScreen). */
     val pendingEmail: String  = ""
 )
 
-/**
- * Shared ViewModel for LoginScreen, RegisterScreen, and OtpVerificationScreen.
- *
- * Survives configuration changes (rotation) because it lives in the Activity's
- * ViewModelStore. All UI events are channelled through [StateFlow]-backed state.
- */
 class AuthViewModel(
     private val repo: AuthRepository = AuthRepository()
 ) : ViewModel() {
@@ -41,11 +31,6 @@ class AuthViewModel(
 
     // ── Login ─────────────────────────────────────────────────────────────────
 
-    /**
-     * Called by [LoginScreen] on "Log in" press.
-     * On success, [AuthUiState.authSuccess] is populated — the caller navigates
-     * to the role-appropriate dashboard then calls [clearAuthSuccess].
-     */
     fun login(email: String, password: String) {
         _uiState.update { it.copy(isLoading = true, errorMessage = null) }
         viewModelScope.launch {
@@ -62,11 +47,7 @@ class AuthViewModel(
 
     // ── Registration ──────────────────────────────────────────────────────────
 
-    /**
-     * Step 1 of registration: sends an OTP to [email].
-     * On success, [AuthUiState.otpSent] becomes true and [AuthUiState.pendingEmail]
-     * is set so the OTP screen knows which address was used.
-     */
+    /** Step 1: send OTP to [email]. */
     fun sendOtp(email: String) {
         _uiState.update { it.copy(isLoading = true, errorMessage = null, otpSent = false) }
         viewModelScope.launch {
@@ -81,11 +62,7 @@ class AuthViewModel(
         }
     }
 
-    /**
-     * Step 2: verifies the OTP code the user entered.
-     * On success, [AuthUiState.otpVerified] becomes true so the OTP screen can
-     * immediately call [completeRegistration].
-     */
+    /** Step 2: verify the 6-digit OTP the user entered. */
     fun verifyOtp(email: String, code: String) {
         _uiState.update { it.copy(isLoading = true, errorMessage = null, otpVerified = false) }
         viewModelScope.launch {
@@ -101,14 +78,14 @@ class AuthViewModel(
     }
 
     /**
-     * Step 3: after OTP is verified, creates the actual account.
-     * The backend's /auth/register will return 403 unless the email was verified.
-     * On success, [AuthUiState.authSuccess] is populated.
+     * Step 3: create the account after OTP is verified.
+     * [studentNumber] is validated on the server as well but the UI
+     * pre-validates with the same regex before calling this.
      */
-    fun completeRegistration(email: String, password: String) {
+    fun completeRegistration(email: String, password: String, studentNumber: String) {
         _uiState.update { it.copy(isLoading = true, errorMessage = null) }
         viewModelScope.launch {
-            when (val result = repo.register(email, password)) {
+            when (val result = repo.register(email, password, studentNumber)) {
                 is AuthResult.Success -> _uiState.update {
                     it.copy(isLoading = false, authSuccess = result.data, otpVerified = false)
                 }
@@ -121,11 +98,7 @@ class AuthViewModel(
 
     // ── State reset helpers ───────────────────────────────────────────────────
 
-    /** Call after reading [AuthUiState.authSuccess] and navigating away. */
     fun clearAuthSuccess() = _uiState.update { it.copy(authSuccess = null) }
-
-    /** Call after reading [AuthUiState.otpSent] and navigating to OTP screen. */
-    fun clearOtpSent() = _uiState.update { it.copy(otpSent = false) }
-
-    fun clearError() = _uiState.update { it.copy(errorMessage = null) }
+    fun clearOtpSent()     = _uiState.update { it.copy(otpSent = false) }
+    fun clearError()       = _uiState.update { it.copy(errorMessage = null) }
 }

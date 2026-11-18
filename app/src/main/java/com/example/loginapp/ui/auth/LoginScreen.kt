@@ -80,7 +80,7 @@ fun LoginScreen(
     }
 
     fun validate(): Boolean {
-        emailError    = if (email.isBlank() || !email.contains('@')) "Enter a valid school email." else null
+        emailError    = if (email.isBlank() || !email.contains('@')) "Enter a valid email address." else null
         passwordError = if (password.length < 8) "Password must be at least 8 characters." else null
         return emailError == null && passwordError == null
     }
@@ -110,7 +110,7 @@ fun LoginScreen(
         )
         Spacer(Modifier.height(6.dp))
         Text(
-            text     = "Sign in with your school email to reach first aid guidance and campus health resources.",
+            text     = "Sign in with your email to reach first aid guidance and campus health resources.",
             style    = MaterialTheme.typography.bodyMedium,
             color    = MedKitInkSoft,
             modifier = Modifier.align(Alignment.Start)
@@ -122,7 +122,7 @@ fun LoginScreen(
         MedKitTextField(
             value         = email,
             onValueChange = { email = it; emailError = null; viewModel.clearError() },
-            label         = "School Email",
+            label         = "Email Address",
             leadingIcon   = { Icon(Icons.Filled.Email, contentDescription = null, tint = MedKitInkFaint) },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
             errorMessage  = emailError,

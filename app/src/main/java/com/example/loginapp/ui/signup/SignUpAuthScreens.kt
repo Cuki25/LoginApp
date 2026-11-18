@@ -82,7 +82,7 @@ fun SignUpContactScreen(
         if (!validate()) return
         isLoading = true
         scope.launch {
-            when (val result = repo.register(email.trim(), password)) {
+            when (val result = repo.register(email.trim(), password, "")) {
                 is AuthResult.Success -> {
                     val data = result.data
                     SignUpDraft.email            = data.email

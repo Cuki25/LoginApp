@@ -58,9 +58,10 @@ import com.example.loginapp.ui.theme.MedKitSurface
 fun OtpVerificationScreen(
     viewModel:       AuthViewModel,
     email:           String,
-    password:        String,          // held in memory; never persisted
+    password:        String,
+    studentNumber:   String,          // collected on RegisterScreen
     onVerified:      (AuthSuccessData) -> Unit,
-    onResend:        () -> Unit       // calls viewModel.sendOtp(email) from NavGraph
+    onResend:        () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
@@ -70,7 +71,7 @@ fun OtpVerificationScreen(
     // Watch for the final authSuccess to fire navigation.
     LaunchedEffect(uiState.otpVerified) {
         if (uiState.otpVerified) {
-            viewModel.completeRegistration(email, password)
+            viewModel.completeRegistration(email, password, studentNumber)
         }
     }
     LaunchedEffect(uiState.authSuccess) {

@@ -45,9 +45,14 @@ object AppConfig {
         "MICROSOFT_REDIRECT_URI", "http://localhost:8080/auth/microsoft/callback"
     )
 
-    // ── SMTP ──────────────────────────────────────────────────────────────────
-    val smtpEmail:        String = env.getOrDefault("SMTP_EMAIL", "")
-    val smtpPassword:     String = env.getOrDefault("SMTP_PASSWORD", "")
+    // ── Resend email API ──────────────────────────────────────────────────────
+    // Legacy SMTP vars kept for reference but no longer used at runtime.
+    val resendApiKey:     String = System.getenv("RESEND_API_KEY")  ?: env.getOrDefault("RESEND_API_KEY",  "")
+    val resendFromEmail:  String = run {
+        val v = System.getenv("RESEND_FROM_EMAIL")
+            ?: env.getOrDefault("RESEND_FROM_EMAIL", "")
+        if (v.isNotBlank()) v else "onboarding@resend.dev"
+    }
     val otpExpiryMinutes: Long   = env.getOrDefault("OTP_EXPIRY_MINUTES", "10").toLong()
 
     // ── Helpers ───────────────────────────────────────────────────────────────

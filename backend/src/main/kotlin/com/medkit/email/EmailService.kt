@@ -1,112 +1,91 @@
 package com.medkit.email
 
 import com.medkit.config.AppConfig
-import jakarta.mail.Message
-import jakarta.mail.MessagingException
-import jakarta.mail.PasswordAuthentication
-import jakarta.mail.Session
-import jakarta.mail.Transport
-import jakarta.mail.internet.InternetAddress
-import jakarta.mail.internet.MimeMessage
 import org.slf4j.LoggerFactory
-import java.util.Properties
+import java.net.HttpURLConnection
+import java.net.URL
 
 /**
- * Sends transactional emails via Gmail SMTP with STARTTLS on port 587.
+ * Sends transactional emails via the Resend HTTPS API.
  *
- * Configuration (set these in .env):
- *   SMTP_EMAIL    — your Gmail address (e.g. medkit.noreply@gmail.com)
- *   SMTP_PASSWORD — a Google App Password (NOT your Gmail login password)
- *                   Generate at: https://myaccount.google.com/apppasswords
- *                   Requires 2-Step Verification on your Google account.
+ * Configuration (set in .env or as Render environment variables):
+ *   RESEND_API_KEY    — API key from https://resend.com/api-keys
+ *   RESEND_FROM_EMAIL — verified sender address, e.g. "MedKit <noreply@yourdomain.com>"
+ *                       Defaults to "onboarding@resend.dev" (Resend's shared test domain)
+ *                       which works before a custom domain is verified.
  *
- * The service object creates a new [Session] per call — Sessions are
- * lightweight and thread-safe; keeping a long-lived one risks stale
- * connections with Gmail's idle timeouts.
+ * The OTP code is always printed to stdout so it can be read in Render logs
+ * during testing even if the API call fails.
  */
 object EmailService {
 
     private val log = LoggerFactory.getLogger(EmailService::class.java)
-
-    private const val SMTP_HOST = "smtp.gmail.com"
-    private const val SMTP_PORT = "587"
+    private const val RESEND_URL = "https://api.resend.com/emails"
 
     // ── Public API ────────────────────────────────────────────────────────────
 
     /**
-     * Sends a MedKit OTP verification email to [toEmail].
+     * Dispatches a MedKit OTP email via Resend.
      *
-     * @throws EmailException if the SMTP credentials are missing or the send fails.
+     * Never throws — errors are logged but swallowed so the calling route can
+     * still respond 200 (the OTP is readable in server logs for testing).
      */
     fun sendOtp(toEmail: String, code: String) {
+        // Always log so the code is readable in Render logs during testing.
+        println("[OTP] $toEmail -> $code")
+        log.info("[OTP] {} -> {}", toEmail, code)
+
+        val apiKey = AppConfig.resendApiKey
+        if (apiKey.isBlank()) {
+            log.warn("[OTP] RESEND_API_KEY is not set — email not sent, but code is logged above.")
+            return
+        }
+
+        val from    = AppConfig.resendFromEmail
         val subject = "Your MedKit verification code"
-        val body = buildOtpEmailBody(code)
-        send(to = toEmail, subject = subject, body = body)
-    }
+        val html    = buildOtpHtml(code)
 
-    // ── Internal send ─────────────────────────────────────────────────────────
-
-    private fun send(to: String, subject: String, body: String) {
-        val fromEmail = AppConfig.smtpEmail
-        val password  = AppConfig.smtpPassword
-
-        if (fromEmail.isBlank() || password.isBlank()) {
-            throw EmailException(
-                "SMTP credentials are not configured. " +
-                "Set SMTP_EMAIL and SMTP_PASSWORD in .env."
-            )
-        }
-
-        val props = Properties().apply {
-            put("mail.smtp.auth",                 "true")
-            put("mail.smtp.starttls.enable",      "true")   // STARTTLS upgrade
-            put("mail.smtp.starttls.required",    "true")   // refuse plain connections
-            put("mail.smtp.host",                 SMTP_HOST)
-            put("mail.smtp.port",                 SMTP_PORT)
-            put("mail.smtp.ssl.trust",            SMTP_HOST)
-            put("mail.smtp.connectiontimeout",    "10000")  // 10 s connect timeout
-            put("mail.smtp.timeout",              "10000")  // 10 s read timeout
-            put("mail.smtp.writetimeout",         "10000")  // 10 s write timeout
-        }
-
-        val session = Session.getInstance(props, object : jakarta.mail.Authenticator() {
-            override fun getPasswordAuthentication() =
-                PasswordAuthentication(fromEmail, password)
-        })
+        val payload = """{"from":"$from","to":["$toEmail"],"subject":"$subject","html":${
+            com.google.gson.Gson().toJson(html)
+        }}"""
 
         try {
-            val message = MimeMessage(session).apply {
-                setFrom(InternetAddress(fromEmail, "MedKit"))
-                setRecipients(Message.RecipientType.TO, InternetAddress.parse(to))
-                setSubject(subject, "UTF-8")
-                // Plain-text fallback only; upgrade to MimeMultipart for HTML if needed.
-                setText(body, "UTF-8")
+            val conn = (URL(RESEND_URL).openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                doOutput      = true
+                connectTimeout = 15_000
+                readTimeout    = 15_000
+                setRequestProperty("Content-Type", "application/json")
+                setRequestProperty("Authorization", "Bearer $apiKey")
             }
-            Transport.send(message)
-            log.info("OTP email sent to {}", to)
-        } catch (e: MessagingException) {
-            log.error("Failed to send email to {}: {}", to, e.message)
-            throw EmailException("Failed to send verification email: ${e.message}", e)
+            conn.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
+
+            val status = conn.responseCode
+            if (status in 200..299) {
+                log.info("[OTP] Resend accepted email to {} (HTTP {})", toEmail, status)
+            } else {
+                val body = runCatching {
+                    conn.errorStream?.bufferedReader()?.readText() ?: "(no body)"
+                }.getOrDefault("(read error)")
+                log.error("[OTP] Resend rejected email to {} — HTTP {}: {}", toEmail, status, body)
+            }
+        } catch (e: Exception) {
+            log.error("[OTP] Failed to call Resend API for {}: {}", toEmail, e.message)
         }
     }
 
     // ── Email body ────────────────────────────────────────────────────────────
 
-    private fun buildOtpEmailBody(code: String): String = """
-        Hi,
-
-        Your MedKit verification code is:
-
-            $code
-
-        This code expires in ${AppConfig.otpExpiryMinutes} minutes.
-
-        If you didn't request this, you can safely ignore this email.
-
-        — The MedKit Team
+    private fun buildOtpHtml(code: String): String = """
+        <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
+          <h2 style="color:#0D5C4A">Your MedKit verification code</h2>
+          <p style="font-size:36px;font-weight:bold;letter-spacing:8px;color:#0D5C4A">$code</p>
+          <p>This code expires in <strong>${AppConfig.otpExpiryMinutes} minutes</strong>.</p>
+          <p style="color:#888;font-size:12px">If you didn't request this, you can safely ignore this email.</p>
+        </div>
     """.trimIndent()
 }
 
-/** Wraps SMTP errors so callers can catch a typed exception. */
+/** Kept for OtpRoutes backward-compat — no longer thrown. */
 class EmailException(message: String, cause: Throwable? = null) :
     RuntimeException(message, cause)

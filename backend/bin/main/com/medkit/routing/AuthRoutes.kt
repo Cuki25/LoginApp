@@ -15,22 +15,27 @@ import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 
+/** STI student numbers: exactly 11 chars, start with 02000, six more digits. */
+private val STUDENT_NUMBER_RE = Regex("^02000\\d{6}$")
+
 fun Route.authRoutes() {
 
     route("/auth") {
 
         // ── POST /auth/register ───────────────────────────────────────────────
         //
-        // Body:  { "email": "...", "password": "..." }
-        // 201:   { "token": "...", "email": "...", "userId": "..." }
-        // 400:   { "error": "..." }   (validation failure / email already taken)
+        // Body:  { "email": "...", "password": "...", "studentNumber": "02000XXXXXX" }
+        // 201:   { "token": "...", "email": "...", "userId": "...", "studentNumber": "..." }
+        // 400:   { "error": "..." }
+        // 403:   { "error": "..." }  (email not OTP-verified)
         post("/register") {
             val body = call.receive<RegisterRequest>()
 
-            // ── Validate inputs ───────────────────────────────────────────────
-            val email    = body.email.trim().lowercase()
-            val password = body.password
+            val email         = body.email.trim().lowercase()
+            val password      = body.password
+            val studentNumber = body.studentNumber.trim()
 
+            // ── Validate inputs ───────────────────────────────────────────────
             if (!email.isValidEmail()) {
                 call.respond(HttpStatusCode.BadRequest, ErrorResponse("Invalid email address."))
                 return@post
@@ -42,8 +47,22 @@ fun Route.authRoutes() {
                 )
                 return@post
             }
+            if (studentNumber.isBlank()) {
+                call.respond(
+                    HttpStatusCode.BadRequest,
+                    ErrorResponse("Student number is required.")
+                )
+                return@post
+            }
+            if (!STUDENT_NUMBER_RE.matches(studentNumber)) {
+                call.respond(
+                    HttpStatusCode.BadRequest,
+                    ErrorResponse("Student number must be 11 digits starting with 02000 (e.g. 02000123456).")
+                )
+                return@post
+            }
 
-            // ── Gate: email must have been verified before registration ──────
+            // ── Gate: email must have been OTP-verified ───────────────────────
             if (!OtpQueries.isEmailVerified(email)) {
                 call.respond(
                     HttpStatusCode.Forbidden,
@@ -55,7 +74,7 @@ fun Route.authRoutes() {
                 return@post
             }
 
-            // ── Check for duplicate email ─────────────────────────────────────
+            // ── Check for duplicates ──────────────────────────────────────────
             if (UserQueries.findByEmail(email) != null) {
                 call.respond(
                     HttpStatusCode.BadRequest,
@@ -63,30 +82,36 @@ fun Route.authRoutes() {
                 )
                 return@post
             }
+            if (UserQueries.findByStudentNumber(studentNumber) != null) {
+                call.respond(
+                    HttpStatusCode.BadRequest,
+                    ErrorResponse("An account with that student number already exists.")
+                )
+                return@post
+            }
 
-            // ── Hash password and persist user ────────────────────────────────
+            // ── Persist user ──────────────────────────────────────────────────
             val hash   = PasswordService.hash(password)
-            val userId = UserQueries.insertLocal(email, hash)
-
-            // Create the linked (empty) medical profile row immediately so the
-            // foreign key is satisfied before the client tries to fill it in.
+            val userId = UserQueries.insertLocal(email, hash, studentNumber)
             MedicalProfileQueries.createEmpty(userId)
-
-            // Clean up the now-consumed OTP rows.
             OtpQueries.deleteForEmail(email)
 
-            // ── Issue JWT ─────────────────────────────────────────────────────
             val token = JwtService.generateToken(userId, email)
             call.respond(
                 HttpStatusCode.Created,
-                AuthResponse(token = token, email = email, userId = userId.toString())
+                AuthResponse(
+                    token         = token,
+                    email         = email,
+                    userId        = userId.toString(),
+                    studentNumber = studentNumber
+                )
             )
         }
 
         // ── POST /auth/login ──────────────────────────────────────────────────
         //
         // Body:  { "email": "...", "password": "..." }
-        // 200:   { "token": "...", "email": "...", "userId": "..." }
+        // 200:   { "token": "...", "email": "...", "userId": "...", "studentNumber": "..." }
         // 400/401: { "error": "..." }
         post("/login") {
             val body = call.receive<LoginRequest>()
@@ -102,10 +127,7 @@ fun Route.authRoutes() {
                 return@post
             }
 
-            // ── Look up user ──────────────────────────────────────────────────
-            val user = UserQueries.findByEmail(email)
-            if (user == null) {
-                // Return a generic message — don't reveal whether the email exists.
+            val user = UserQueries.findByEmail(email) ?: run {
                 call.respond(
                     HttpStatusCode.Unauthorized,
                     ErrorResponse("Invalid email or password.")
@@ -113,20 +135,19 @@ fun Route.authRoutes() {
                 return@post
             }
 
-            // ── Guard: account was created via OAuth, has no password ─────────
             val hash = user.passwordHash
             if (hash == null) {
                 call.respond(
                     HttpStatusCode.BadRequest,
                     ErrorResponse(
-                        "This account was created with ${user.authProvider.replaceFirstChar { it.uppercase() }}. " +
-                        "Please sign in with that provider."
+                        "This account was created with ${
+                            user.authProvider.replaceFirstChar { it.uppercase() }
+                        }. Please sign in with that provider."
                     )
                 )
                 return@post
             }
 
-            // ── Verify BCrypt hash ────────────────────────────────────────────
             if (!PasswordService.verify(password, hash)) {
                 call.respond(
                     HttpStatusCode.Unauthorized,
@@ -135,16 +156,19 @@ fun Route.authRoutes() {
                 return@post
             }
 
-            // ── Issue JWT ─────────────────────────────────────────────────────
             val token = JwtService.generateToken(user.id, email)
             call.respond(
                 HttpStatusCode.OK,
-                AuthResponse(token = token, email = email, userId = user.id.toString())
+                AuthResponse(
+                    token         = token,
+                    email         = email,
+                    userId        = user.id.toString(),
+                    studentNumber = user.studentNumber
+                )
             )
         }
     }
 }
 
-// ── Tiny RFC-5322-ish email check (no external dependency needed) ─────────────
 private fun String.isValidEmail(): Boolean =
     isNotBlank() && contains('@') && substringAfter('@').contains('.')
